@@ -1,0 +1,40 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::create('products', function (Blueprint $table) {
+            $table->id();
+            $table->foreignId('category_id')->constrained()->cascadeOnDelete();
+            $table->string('name');
+            $table->string('slug')->unique();
+            $table->text('description')->nullable();
+
+            // Atribut Khusus Fashion
+            $table->string('size', 50)->nullable();       // S, M, L, XL, All Size
+            $table->string('color', 50)->nullable();      // Hitam, Putih, Navy
+            $table->string('material', 100)->nullable();  // Katun, Denim, Fleece
+
+            $table->decimal('price', 12, 2);
+            $table->decimal('discount_price', 12, 2)->nullable();
+            $table->integer('stock')->default(0);
+            $table->integer('weight')->default(0)->comment('dalam gram');
+            $table->boolean('is_active')->default(true);
+            $table->boolean('is_featured')->default(false);
+            $table->timestamps();
+
+            $table->index(['category_id', 'is_active']);
+            $table->index('is_featured');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::dropIfExists('products');
+    }
+};
