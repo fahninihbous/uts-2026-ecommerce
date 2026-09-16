@@ -5,6 +5,7 @@ namespace Database\Seeders;
 use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
+use Illuminate\Support\Facades\Hash;
 
 class DatabaseSeeder extends Seeder
 {
@@ -15,11 +16,17 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
-        // User::factory(10)->create();
+        // 1. Panggil seeder lain yang sudah dibuat (User, Category, Product)
+        $this->call([
+            UserSeeder::class,
+        ]);
 
+        // 2. Atau Anda juga bisa tetap menggunakan bawaan Laravel jika ingin menambah user test tambahan:
         User::factory()->create([
             'name' => 'Test User',
             'email' => 'test@example.com',
+            'password' => Hash::make('password123'),
+            'role' => 'customer',
         ]);
     }
 }

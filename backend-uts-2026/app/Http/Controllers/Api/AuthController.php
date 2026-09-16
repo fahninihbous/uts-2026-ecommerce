@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
@@ -6,6 +7,7 @@ use App\Models\User;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Validation\Rule;
 
 class AuthController extends Controller
 {
@@ -21,7 +23,7 @@ class AuthController extends Controller
             $user = User::create([
                 'name'     => $request->name,
                 'email'    => $request->email,
-                'password' => Hash::make($request->password),  // password WAJIB di-hash
+                'password' => Hash::make($request->password),
             ]);
 
             return response()->json([
@@ -37,8 +39,8 @@ class AuthController extends Controller
             ], 500);
         }
     }
-    // ini bagian login
-        public function login(Request $request)
+
+    public function login(Request $request)
     {
         try {
             $validated = $request->validate([
@@ -62,13 +64,13 @@ class AuthController extends Controller
                 ], 401);
             }
 
-            // Kalau lolos semua pengecekan, buat token baru untuk user ini
             $token = $user->createToken('api-token')->plainTextToken;
 
             return response()->json([
                 'status'  => true,
                 'message' => 'Login berhasil.',
                 'token'   => $token,
+                'user'    => $user // <-- PENTING: Mengirim data user beserta rolenya ke Vue
             ], 200);
 
         } catch (Exception $e) {
@@ -78,8 +80,8 @@ class AuthController extends Controller
             ], 500);
         }
     }
-    // ini bagian logout
-        public function profile(Request $request)
+
+    public function profile(Request $request)
     {
         try {
             $user = $request->user();
@@ -91,6 +93,43 @@ class AuthController extends Controller
             ], 200);
         } catch (Exception $e) {
             return response()->json(['status' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function update(Request $request)
+    {
+        try {
+            $user = $request->user();
+
+            $request->validate([
+                'name'    => 'required|string|max:255',
+                'email'   => [
+                    'required',
+                    'email',
+                    Rule::unique('users')->ignore($user->id),
+                ],
+                'phone'   => 'nullable|string|max:20',
+                'address' => 'nullable|string',
+            ]);
+
+            $user->update([
+                'name'    => $request->name,
+                'email'   -> $request->email,
+                'phone'   => $request->phone,
+                'address' => $request->address,
+            ]);
+
+            return response()->json([
+                'status'  => true,
+                'message' => 'Profil berhasil diperbarui.',
+                'data'    => $user,
+            ], 200);
+
+        } catch (Exception $e) {
+            return response()->json([
+                'status'  => false,
+                'message' => $e->getMessage(),
+            ], 500);
         }
     }
 

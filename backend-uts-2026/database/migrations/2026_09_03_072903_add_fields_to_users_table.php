@@ -13,8 +13,7 @@ return new class extends Migration
                   ->default('customer')
                   ->after('password');
             $table->string('avatar')->nullable()->after('role');
-            $table->string('google_id')->nullable()->unique()->after('avatar');
-            $table->string('phone', 20)->nullable()->after('google_id');
+            $table->string('phone', 20)->nullable()->after('avatar');
             $table->text('address')->nullable()->after('phone');
         });
     }
@@ -22,7 +21,7 @@ return new class extends Migration
     public function down(): void
     {
         Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn(['role', 'avatar', 'google_id', 'phone', 'address']);
+            $table->dropColumn(['role', 'avatar', 'phone', 'address']);
         });
     }
 };
