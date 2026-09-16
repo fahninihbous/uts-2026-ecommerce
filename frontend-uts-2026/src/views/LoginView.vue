@@ -1,25 +1,80 @@
 <script setup>
-import { ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { onMounted } from 'vue'
-onMounted(() => {
-  setTimeout(() => {
-    router.push('/home')
-  }, 1000)
-})
+import axios from 'axios'
 
+/* ================= CONFIGURATION ================= */
+const API_URL = 'http://localhost:8000/api'
+
+/* ================= ROUTER ================= */
 const router = useRouter()
 
-const email = ref('')
-const password = ref('')
+/* ================= FORM STATE ================= */
+const form = reactive({
+  email: '',
+  password: '',
+  remember: false
+})
 
-const login = () => {
-  // proses login
-  if (email.value && password.value) {
-    // setelah login berhasil → User
-    router.push('/user')
-  } else {
+/* ================= UI STATE ================= */
+const isLoading = ref(false)
+
+/* ================= LOGIN FUNCTION ================= */
+const handleLogin = async () => {
+  if (!form.email || !form.password) {
     alert('Email dan password wajib diisi!')
+    return
+  }
+
+  isLoading.value = true
+
+  try {
+    // 1. Kirim data login ke backend Laravel
+    const response = await axios.post(`${API_URL}/login`, {
+      email: form.email,
+      password: form.password
+    })
+
+    // Mendapatkan token (mengantisipasi nama key 'token' atau 'access_token' dari backend)
+    const token = response.data.token || response.data.access_token
+
+    if (token) {
+      alert('Login berhasil!')
+
+      // Simpan token ke localStorage
+      localStorage.setItem('token', token)
+
+      // Menyimpan data role ke localStorage
+      if (response.data.user && response.data.user.role) {
+        localStorage.setItem('role', response.data.user.role)
+      } else if (response.data.role) {
+        localStorage.setItem('role', response.data.role)
+      } else {
+        localStorage.setItem('role', 'customer') 
+      }
+
+      // Set default header authorization Axios
+      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+
+      // Diarahkan ke halaman home
+      router.push('/home')
+    } else {
+      // Jika status true tapi token tidak ditemukan di response
+      alert(response.data.message || 'Login gagal, token tidak valid.')
+    }
+
+  } catch (error) {
+    console.error('Login Error:', error)
+    
+    // Menangkap pesan error dari Laravel (misal: 401 Unauthorized / User tidak ditemukan)
+    if (error.response && error.response.data) {
+      const errorMsg = error.response.data.message || error.response.data.error || 'User tidak ditemukan atau password salah.'
+      alert(`Gagal: ${errorMsg}`)
+    } else {
+      alert('Terjadi kesalahan koneksi ke server.')
+    }
+  } finally {
+    isLoading.value = false
   }
 }
 </script>
@@ -48,7 +103,7 @@ const login = () => {
         <div class="form-group">
           <div class="label-row">
             <label for="password">Password</label>
-            <a href="#" class="forgot-link">Forget password?</a>
+            <router-link to="/forgot-password" class="forgot-link">Forget password?</router-link>
           </div>
           <input 
             id="password"
@@ -86,7 +141,7 @@ const login = () => {
 
       <p class="footer-text">
         Don't have an account? 
-        <a href="#" class="register-link">Register now</a>
+        <router-link to="/register" class="register-link">Register now</router-link>
       </p>
 
     </div>

@@ -1,557 +1,258 @@
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 
+const API_URL = 'http://localhost:8000/api'
 const router = useRouter()
 
+// State Form Edit Profile
 const profile = ref({
-  firstName: 'Naura',
-  lastName: 'Zahra',
-  email: 'naura@example.com',
-  phone: '0812 3456 7890',
-  gender: 'Female',
-  birthDate: '2008-05-12',
-  address: 'Jl. Example No. 123',
-  city: 'Bandung',
-  province: 'Jawa Barat',
-  postalCode: '40123'
+  name: '',
+  email: '',
+  phone: '',
+  address: ''
 })
 
 const isSaving = ref(false)
+const isLoading = ref(true)
 
-const saveProfile = () => {
+// Ambil data profil saat halaman dimuat
+const fetchProfileData = async () => {
+  const token = localStorage.getItem('token')
+  if (!token) {
+    router.push('/login')
+    return
+  }
+
+  axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
+  isLoading.value = true
+
+  try {
+    const response = await axios.get(`${API_URL}/profile`)
+    if (response.data.status === true && response.data.data) {
+      const data = response.data.data
+      profile.value = {
+        name: data.name || '',
+        email: data.email || '',
+        phone: data.phone || '',
+        address: data.address || ''
+      }
+    }
+  } catch (error) {
+    console.error('Gagal mengambil data profil:', error)
+    if (error.response && (error.response.status === 401 || error.response.status === 419)) {
+      localStorage.removeItem('token')
+      router.push('/login')
+    }
+  } finally {
+    isLoading.value = false
+  }
+}
+
+// Simpan perubahan ke backend Laravel
+const saveProfile = async () => {
+  const token = localStorage.getItem('token')
+  if (!token) {
+    router.push('/login')
+    return
+  }
+
   isSaving.value = true
 
-  setTimeout(() => {
+  try {
+    // Sesuaikan endpoint backend Anda (misal: PUT /api/profile atau POST /api/profile/update)
+    const response = await axios.put(`${API_URL}/profile`, profile.value, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+
+    if (response.data.status === true || response.status === 200) {
+      alert('Profil berhasil diperbarui!')
+      router.push('/user') // Kembali ke halaman account/user
+    }
+  } catch (error) {
+    console.error('Gagal menyimpan profil:', error)
+    alert(error.response?.data?.message || 'Terjadi kesalahan saat menyimpan perubahan.')
+  } finally {
     isSaving.value = false
-
-    alert('Profile berhasil diperbarui!')
-
-    router.push('/profile')
-  }, 800)
+  }
 }
 
 const cancelEdit = () => {
-  router.push('/profile')
+  router.push('/user')
 }
+
+onMounted(() => {
+  fetchProfileData()
+})
 </script>
 
-
 <template>
-
   <div class="edit-profile-page">
 
     <!-- =====================================
          NAVBAR
     ====================================== -->
-
     <header class="navbar">
-
       <div class="nav-left">
-
-        <router-link to="/shop">
-          SHOP
-        </router-link>
-
-        <router-link to="/about">
-          OUR MISSION
-        </router-link>
-
+        <router-link to="/shop">SHOP</router-link>
+        <router-link to="/about">OUR MISSION</router-link>
       </div>
 
-
-      <router-link
-        to="/home"
-        class="logo"
-      >
+      <router-link to="/home" class="logo">
         PROVIDENTIAL
       </router-link>
 
-
       <div class="nav-right">
-
-        <router-link to="/search">
-          SEARCH
-        </router-link>
-
-        <router-link to="/cart">
-          CART
-        </router-link>
-
-        <router-link
-          to="/user"
-          class="active"
-        >
-          ACCOUNT
-        </router-link>
-
+        <router-link to="/search">SEARCH</router-link>
+        <router-link to="/cart">CART</router-link>
+        <router-link to="/user" class="active">ACCOUNT</router-link>
       </div>
-
     </header>
 
 
     <!-- =====================================
          PAGE HEADER
     ====================================== -->
-
     <section class="page-header">
-
       <div class="page-number">
-        01 — ACCOUNT / PROFILE
+        01 — ACCOUNT / EDIT PROFILE
       </div>
-
       <h1>
         Edit <em>Profile</em>
       </h1>
-
       <p>
-        Update your personal information and account details.
+        Update your personal identity and shipping location details.
       </p>
-
     </section>
 
 
     <!-- =====================================
          MAIN CONTENT
     ====================================== -->
-
     <main class="edit-container">
 
-
-      <!-- =====================================
-           BACK BUTTON
-      ====================================== -->
-
+      <!-- BACK BUTTON -->
       <div class="back-section">
-
-        <button
-          class="back-button"
-          @click="cancelEdit"
-        >
-          ← BACK TO PROFILE
+        <button class="back-button" @click="cancelEdit">
+          ← BACK TO ACCOUNT
         </button>
-
       </div>
 
+      <!-- LOADING STATE -->
+      <div v-if="isLoading" style="text-align: center; padding: 40px; color: #888888; font-size: 13px;">
+        Memuat data profil...
+      </div>
 
-      <!-- =====================================
-           FORM
-      ====================================== -->
-
-      <form
-        class="profile-form"
-        @submit.prevent="saveProfile"
-      >
-
+      <!-- FORM -->
+      <form v-else class="profile-form" @submit.prevent="saveProfile">
 
         <!-- =====================================
-             PROFILE IMAGE
+             PROFILE IDENTITY
         ====================================== -->
-
         <section class="form-section profile-photo-section">
-
           <div class="section-heading">
-
-            <div class="section-number">
-              01
-            </div>
-
+            <div class="section-number">01</div>
             <div>
-
-              <h2>
-                Profile
-              </h2>
-
-              <p>
-                Your account identity.
-              </p>
-
+              <h2>Profile Identity</h2>
+              <p>Your main account identity.</p>
             </div>
-
           </div>
-
 
           <div class="profile-photo">
-
             <div class="avatar">
-              {{ profile.firstName.charAt(0) }}
+              {{ profile.name ? profile.name.charAt(0).toUpperCase() : 'U' }}
             </div>
-
-
             <div class="photo-info">
-
-              <h3>
-                {{ profile.firstName }}
-                {{ profile.lastName }}
-              </h3>
-
-              <p>
-                PROVIDENTIAL MEMBER
-              </p>
-
-              <button
-                type="button"
-                class="change-photo"
-              >
-                CHANGE PHOTO
-              </button>
-
+              <h3>{{ profile.name || 'User' }}</h3>
+              <p>PROVIDENTIAL MEMBER</p>
             </div>
-
           </div>
-
         </section>
 
 
         <!-- =====================================
-             PERSONAL INFORMATION
+             PERSONAL & CONTACT INFORMATION
         ====================================== -->
-
         <section class="form-section">
-
           <div class="section-heading">
-
-            <div class="section-number">
-              02
-            </div>
-
+            <div class="section-number">02</div>
             <div>
-
-              <h2>
-                Personal Information
-              </h2>
-
-              <p>
-                Basic information about you.
-              </p>
-
+              <h2>Personal & Contact Information</h2>
+              <p>Update your name, email, and phone number.</p>
             </div>
-
           </div>
-
 
           <div class="form-grid">
-
-
-            <!-- FIRST NAME -->
-
-            <div class="form-group">
-
-              <label>
-                FIRST NAME
-              </label>
-
+            <!-- FULL NAME -->
+            <div class="form-group full">
+              <label>FULL NAME</label>
               <input
-                v-model="profile.firstName"
+                v-model="profile.name"
                 type="text"
-                placeholder="First name"
+                placeholder="Full name"
                 required
               />
-
             </div>
-
-
-            <!-- LAST NAME -->
-
-            <div class="form-group">
-
-              <label>
-                LAST NAME
-              </label>
-
-              <input
-                v-model="profile.lastName"
-                type="text"
-                placeholder="Last name"
-                required
-              />
-
-            </div>
-
-
-            <!-- GENDER -->
-
-            <div class="form-group">
-
-              <label>
-                GENDER
-              </label>
-
-              <select
-                v-model="profile.gender"
-              >
-
-                <option value="Female">
-                  Female
-                </option>
-
-                <option value="Male">
-                  Male
-                </option>
-
-              </select>
-
-            </div>
-
-
-            <!-- BIRTH DATE -->
-
-            <div class="form-group">
-
-              <label>
-                DATE OF BIRTH
-              </label>
-
-              <input
-                v-model="profile.birthDate"
-                type="date"
-              />
-
-            </div>
-
-          </div>
-
-        </section>
-
-
-        <!-- =====================================
-             CONTACT INFORMATION
-        ====================================== -->
-
-        <section class="form-section">
-
-          <div class="section-heading">
-
-            <div class="section-number">
-              03
-            </div>
-
-            <div>
-
-              <h2>
-                Contact
-              </h2>
-
-              <p>
-                Your contact information.
-              </p>
-
-            </div>
-
-          </div>
-
-
-          <div class="form-grid">
-
 
             <!-- EMAIL -->
-
-            <div class="form-group full">
-
-              <label>
-                EMAIL ADDRESS
-              </label>
-
+            <div class="form-group">
+              <label>EMAIL ADDRESS</label>
               <input
                 v-model="profile.email"
                 type="email"
                 placeholder="Email address"
                 required
               />
-
             </div>
 
-
             <!-- PHONE -->
-
-            <div class="form-group full">
-
-              <label>
-                PHONE NUMBER
-              </label>
-
+            <div class="form-group">
+              <label>PHONE NUMBER</label>
               <input
                 v-model="profile.phone"
                 type="tel"
                 placeholder="Phone number"
-                required
               />
-
             </div>
-
           </div>
-
         </section>
 
 
         <!-- =====================================
-             ADDRESS
+             ADDRESS (LOCATION)
         ====================================== -->
-
-        <section class="form-section">
-
-          <div class="section-heading">
-
-            <div class="section-number">
-              04
-            </div>
-
-            <div>
-
-              <h2>
-                Address
-              </h2>
-
-              <p>
-                Your default shipping address.
-              </p>
-
-            </div>
-
-          </div>
-
-
-          <div class="form-grid">
-
-
-            <!-- ADDRESS -->
-
-            <div class="form-group full">
-
-              <label>
-                STREET ADDRESS
-              </label>
-
-              <textarea
-                v-model="profile.address"
-                placeholder="Street address"
-                rows="3"
-                required
-              ></textarea>
-
-            </div>
-
-
-            <!-- CITY -->
-
-            <div class="form-group">
-
-              <label>
-                CITY
-              </label>
-
-              <input
-                v-model="profile.city"
-                type="text"
-                placeholder="City"
-                required
-              />
-
-            </div>
-
-
-            <!-- PROVINCE -->
-
-            <div class="form-group">
-
-              <label>
-                PROVINCE
-              </label>
-
-              <input
-                v-model="profile.province"
-                type="text"
-                placeholder="Province"
-                required
-              />
-
-            </div>
-
-
-            <!-- POSTAL CODE -->
-
-            <div class="form-group">
-
-              <label>
-                POSTAL CODE
-              </label>
-
-              <input
-                v-model="profile.postalCode"
-                type="text"
-                placeholder="Postal code"
-                required
-              />
-
-            </div>
-
-          </div>
-
-        </section>
 
 
         <!-- =====================================
-             ACTION
+             ACTION BUTTONS
         ====================================== -->
-
         <section class="form-actions">
-
-          <button
-            type="button"
-            class="cancel-button"
-            @click="cancelEdit"
-          >
+          <button type="button" class="cancel-button" @click="cancelEdit">
             CANCEL
           </button>
 
-
-          <button
-            type="submit"
-            class="save-button"
-            :disabled="isSaving"
-          >
-
-            <span v-if="!isSaving">
-              SAVE CHANGES
-            </span>
-
-            <span v-else>
-              SAVING...
-            </span>
-
+          <button type="submit" class="save-button" :disabled="isSaving">
+            <span v-if="!isSaving">SAVE CHANGES</span>
+            <span v-else>SAVING...</span>
           </button>
-
         </section>
 
       </form>
-
     </main>
 
 
     <!-- =====================================
          FOOTER
     ====================================== -->
-
     <footer class="footer">
-
-      <div class="footer-brand">
-        PROVIDENTIAL
-      </div>
-
-      <div class="footer-tagline">
-        SIMPLE. CONSCIOUS. TIMELESS.
-      </div>
-
-      <div class="footer-copy">
-        © 2026 PROVIDENTIAL
-      </div>
-
+      <div class="footer-brand">PROVIDENTIAL</div>
+      <div class="footer-tagline">SIMPLE. CONSCIOUS. TIMELESS.</div>
+      <div class="footer-copy">© 2026 PROVIDENTIAL</div>
     </footer>
 
   </div>
-
 </template>
-
 
 <style scoped>
 
