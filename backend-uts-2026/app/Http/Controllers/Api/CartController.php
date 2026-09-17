@@ -41,17 +41,32 @@ class CartController extends Controller
                 'user_id' => $request->user()->id,
             ]);
 
-            $cartItem = CartItem::updateOrCreate(
-                [
+            // Normalisasi ukuran dan warna jika kosong/null agar seragam
+            $size = $request->input('size', 'All Size');
+            $color = $request->input('color', 'Default');
+            $incomingQty = (int) $request->input('quantity', 1);
+
+            // Cek manual apakah item sudah ada di keranjang
+            $cartItem = CartItem::where('cart_id', $cart->id)
+                ->where('product_id', $request->product_id)
+                ->where('size', $size)
+                ->where('color', $color)
+                ->first();
+
+            if ($cartItem) {
+                // Jika sudah ada, tambahkan quantity secara manual via PHP
+                $cartItem->quantity += $incomingQty;
+                $cartItem->save();
+            } else {
+                // Jika belum ada, buat baru
+                $cartItem = CartItem::create([
                     'cart_id'    => $cart->id,
                     'product_id' => $request->product_id,
-                    'size'       => $request->size,
-                    'color'      => $request->color,
-                ],
-                [
-                    'quantity'   => \Illuminate\Support\Facades\DB::raw('quantity + ' . $request->quantity),
-                ]
-            );
+                    'quantity'   => $incomingQty,
+                    'size'       => $size,
+                    'color'      => $color,
+                ]);
+            }
 
             return response()->json([
                 'status'  => true,

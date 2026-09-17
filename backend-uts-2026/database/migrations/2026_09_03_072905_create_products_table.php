@@ -15,15 +15,8 @@ return new class extends Migration
             $table->string('slug')->unique();
             $table->text('description')->nullable();
 
-            // Atribut Khusus Fashion
-            $table->string('size', 50)->nullable();       // S, M, L, XL, All Size
-            $table->string('color', 50)->nullable();      // Hitam, Putih, Navy
-            $table->string('material', 100)->nullable();  // Katun, Denim, Fleece
-
             $table->decimal('price', 12, 2);
-            $table->decimal('discount_price', 12, 2)->nullable();
             $table->integer('stock')->default(0);
-            $table->integer('weight')->default(0)->comment('dalam gram');
             $table->boolean('is_active')->default(true);
             $table->boolean('is_featured')->default(false);
             $table->timestamps();

@@ -23,4 +23,10 @@ class Cart extends Model
     {
         return $this->hasMany(CartItem::class);
     }
+
+    // Tambahkan ini sebagai alias agar relasi 'items' juga bisa dibaca
+    public function items()
+    {
+        return $this->hasMany(CartItem::class);
+    }
 }

@@ -18,8 +18,6 @@ Route::prefix('public')->group(function () {
     Route::get('/produk', [ProductController::class, 'index']);
     Route::get('/produk/{id}', [ProductController::class, 'show']);
     Route::get('/kategori', [CategoryController::class, 'index']);
-    // Pastikan method di CategoryController / ProductController sesuai untuk ini:
-    Route::get('/kategori/{id}/produk', [ProductController::class, 'getByCategory']);
 });
 
 // --- RUTE YANG MEMERLUKAN AUTENTIKASI (Sanctum) ---
@@ -29,7 +27,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::put('/profile', [AuthController::class, 'update']);
     Route::post('/logout', [AuthController::class, 'logout']);
 
-    // Kategori
+    // Kategori (Admin/Auth)
     Route::get('/kategori', [CategoryController::class, 'index']);
     Route::post('/kategori', [CategoryController::class, 'store']);
     Route::put('/kategori/{id}', [CategoryController::class, 'update']);
@@ -40,7 +38,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/cart', [CartController::class, 'store']);
     Route::delete('/cart/{id}', [CartController::class, 'destroy']);
 
-    // Produk
+    // Produk (Admin/Auth Management)
     Route::get('/produk', [ProductController::class, 'index']);
     Route::post('/produk', [ProductController::class, 'store']);
     Route::get('/produk/{id}', [ProductController::class, 'show']);
