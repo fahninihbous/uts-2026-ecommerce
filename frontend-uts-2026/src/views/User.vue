@@ -88,28 +88,6 @@ onMounted(() => {
 
 <template>
   <div class="user-page">
-
-    <!-- =================================
-         NAVBAR
-    ================================== -->
-    <header class="navbar">
-      <div class="nav-left">
-        <router-link to="/shop">SHOP</router-link>
-        <router-link to="/about">OUR MISSION</router-link>
-      </div>
-
-      <button class="logo" @click="goHome">
-        PROVIDENTIAL
-      </button>
-
-      <div class="nav-right">
-        <router-link to="/search">SEARCH</router-link>
-        <router-link to="/cart">CART</router-link>
-        <router-link to="/user" class="active">ACCOUNT</router-link>
-      </div>
-    </header>
-
-
     <!-- =================================
          MAIN CONTENT
     ================================== -->

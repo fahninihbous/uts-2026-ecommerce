@@ -4,7 +4,6 @@ import HomeView from '../views/HomeView.vue'
 import AboutView from '../views/AboutView.vue'
 import LoginView from '../views/LoginView.vue'
 import Cart from '../views/Cart.vue'
-import Search from '../views/Search.vue'
 import ProductDetail from '../views/ProductDetail.vue'
 import Checkout from '../views/Checkout.vue'
 import PlaceOrder from '../views/PlaceOrder.vue'
@@ -29,11 +28,7 @@ const routes = [
     name: 'shop',
     component: () => import('../views/Shop.vue')
   },
-  {
-    path: '/search',
-    name: 'search',
-    component: Search
-  },
+  // RUTE /search DIHAPUS KARENA SUDAH TIDAK ADA
   {
     path: '/productdetail',
     name: 'productdetail',
@@ -68,7 +63,7 @@ const routes = [
   },
   {
     path: '/checkout',
-    name: 'checkout',
+    name: ' ',
     component: Checkout,
     meta: { requiresAuth: true }
   },
@@ -82,12 +77,6 @@ const routes = [
     path: '/user',
     name: 'user',
     component: () => import('../views/User.vue'),
-    meta: { requiresAuth: true }
-  },
-  {
-    path: '/profile',
-    name: 'profile',
-    component: () => import('../views/Profile.vue'),
     meta: { requiresAuth: true }
   },
   {
@@ -116,27 +105,25 @@ const router = createRouter({
 })
 
 /* ================= NAVIGATION GUARD ================= */
-router.beforeEach((to, from, next) => {
+router.beforeEach((to, from) => {
   const token = localStorage.getItem('token')
   const userRole = localStorage.getItem('role')
 
   if (to.meta.requiresAuth && !token) {
     alert('Silakan login terlebih dahulu untuk mengakses halaman ini.')
-    return next('/login')
+    return { name: 'login' }
   } 
   
   if (to.meta.adminOnly) {
     if (!token || userRole !== 'admin') {
       alert('Akses ditolak! Halaman ini hanya untuk Administrator.')
-      return next('/home')
+      return { name: 'home' }
     }
   }
   
   if (to.meta.guestOnly && token) {
-    return next('/home')
+    return { name: 'home' }
   } 
-  
-  next()
 })
 
 export default router 

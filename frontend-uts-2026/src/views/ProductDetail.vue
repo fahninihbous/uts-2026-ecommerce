@@ -8,7 +8,7 @@
         <!-- LEFT NAV -->
         <nav class="left-nav">
           <router-link to="/shop">SHOP</router-link>
-          <router-link to="/mission">OUR MISSION</router-link>
+          <router-link to="/about">OUR MISSION</router-link>
         </nav>
 
         <!-- LOGO -->
@@ -20,7 +20,7 @@
         <div class="right-nav">
 
           <!-- Search -->
-          <router-link to="/search" class="icon-button">
+          <router-link to="/home" class="icon-button">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="21"
@@ -53,12 +53,12 @@
             </svg>
 
             <span class="cart-count">
-              {{ quantity }}
+              {{ cartCount }}
             </span>
           </router-link>
 
           <!-- Profile -->
-          <router-link to="/profile" class="icon-button">
+          <router-link to="/user" class="icon-button">
             <svg
               xmlns="http://www.w3.org/2000/svg"
               width="21"
@@ -86,15 +86,18 @@
         ← Back to Shop
       </router-link>
 
-      <section class="product-detail">
+      <section class="product-detail" v-if="product">
 
-        <!-- LEFT : PLAIN PRODUCT AREA -->
+        <!-- LEFT : PRODUCT IMAGE DISPLAY -->
         <div class="product-display">
-
-          <div class="product-placeholder">
-            <span>PROVIDENTIAL</span>
+          <div class="product-image-container">
+            <img 
+              :src="product?.images && product.images.length > 0 && product.images[0]?.image_path 
+                ? '/storage/' + product.images[0].image_path 
+                : (product?.image || '/images/placeholder.jpg')" 
+              :alt="product.name" 
+            />
           </div>
-
         </div>
 
 
@@ -102,27 +105,21 @@
         <div class="product-info">
 
           <p class="product-category">
-            APPAREL
+            {{ product.category?.name || product.category || 'APPAREL' }}
           </p>
 
           <h1>
-            Classic Oversized Shirt
+            {{ product.name }}
           </h1>
 
           <p class="price">
-            $75
+            {{ formatRupiah(product.discount_price || product.price) }}
           </p>
 
           <div class="line"></div>
 
           <p class="description">
-            A timeless oversized shirt designed with simplicity,
-            comfort, and effortless elegance in mind.
-          </p>
-
-          <p class="description">
-            Crafted for everyday wear, this piece brings together
-            clean details and a relaxed silhouette for a refined look.
+            {{ product.description || 'A timeless piece designed with simplicity, comfort, and effortless elegance in mind.' }}
           </p>
 
 
@@ -131,17 +128,17 @@
 
             <div class="info-row">
               <span>Material</span>
-              <strong>Premium Cotton</strong>
+              <strong>{{ product.material || 'Premium Quality' }}</strong>
             </div>
 
             <div class="info-row">
               <span>Color</span>
-              <strong>Classic White</strong>
+              <strong>{{ product.color || 'Default' }}</strong>
             </div>
 
             <div class="info-row">
               <span>Availability</span>
-              <strong>In Stock</strong>
+              <strong>{{ product.stock > 0 ? 'In Stock (' + product.stock + ')' : 'Out of Stock' }}</strong>
             </div>
 
           </div>
@@ -177,13 +174,15 @@
             <button
               class="add-button"
               @click="addToCart"
+              :disabled="isSubmitting || product.stock <= 0"
             >
-              ADD TO CART
+              {{ isSubmitting ? 'PROCESSING...' : 'ADD TO CART' }}
             </button>
 
             <button
               class="buy-button"
               @click="buyNow"
+              :disabled="isSubmitting || product.stock <= 0"
             >
               BUY IT NOW
             </button>
@@ -192,12 +191,17 @@
 
 
           <p class="shipping-info">
-            Free shipping on orders over $100
+            Free shipping on orders over IDR 500.000
           </p>
 
         </div>
 
       </section>
+
+      <!-- LOADING / NOT FOUND STATE -->
+      <div v-else class="empty-state">
+        <h2>Loading product details...</h2>
+      </div>
 
 
       <!-- ================= PRODUCT DESCRIPTION ================= -->
@@ -269,765 +273,237 @@
 
 
 <script setup>
+import { ref, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import axios from 'axios'
 
-import { ref } from 'vue'
-import { useRouter } from 'vue-router'
-
+const route = useRoute()
 const router = useRouter()
 
+const product = ref(null)
 const quantity = ref(1)
+const cartCount = ref(0)
+const isSubmitting = ref(false)
 
+// Ambil data produk berdasarkan ID dari query URL (?id=...) atau route parameter
+const fetchProductDetail = async () => {
+  try {
+    const productId = route.query.id || route.params.id
+    if (!productId) {
+      router.push('/shop')
+      return
+    }
+
+    const response = await axios.get(`http://127.0.0.1:8000/api/public/produk`)
+    if (response.data) {
+      const items = Array.isArray(response.data) ? response.data : (response.data.data || [])
+      product.value = items.find(p => p.id == productId) || null
+    }
+
+    // Ambil jumlah keranjang user jika sudah login
+    const token = localStorage.getItem('token')
+    if (token) {
+      const cartRes = await axios.get('http://127.0.0.1:8000/api/cart', { 
+        headers: { 'Authorization': `Bearer ${token}` } 
+      })
+      if (cartRes.data?.status && cartRes.data?.data) {
+        const itemsList = cartRes.data.data.items || cartRes.data.data.cart_items || []
+        cartCount.value = itemsList.reduce((acc, item) => acc + item.quantity, 0)
+      }
+    }
+  } catch (error) {
+    console.error('Gagal memuat detail produk:', error)
+  }
+}
+
+onMounted(() => {
+  fetchProductDetail()
+})
+
+// Format Rupiah
+const formatRupiah = (price) => {
+  return new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 0
+  }).format(price || 0)
+}
 
 // Increase quantity
 const increaseQuantity = () => {
   quantity.value++
 }
 
-
 // Decrease quantity
 const decreaseQuantity = () => {
-
   if (quantity.value > 1) {
     quantity.value--
   }
-
 }
 
+// Tombol Add to Cart (Memunculkan notifikasi sukses)
+const addToCart = async () => {
+  if (isSubmitting.value || !product.value) return
+  isSubmitting.value = true
 
-// Add to cart
-const addToCart = () => {
+  try {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      alert('Silakan login terlebih dahulu untuk menambahkan produk ke keranjang.')
+      router.push('/login')
+      return
+    }
 
-  alert(
-    `Classic Oversized Shirt added to cart. Quantity: ${quantity.value}`
-  )
+    const payload = {
+      product_id: product.value.id,
+      quantity: quantity.value,
+      size: product.value.size || 'All Size',
+      color: product.value.color || 'Default'
+    }
 
+    const response = await axios.post('http://127.0.0.1:8000/api/cart', payload, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+
+    if (response.data.status) {
+      const updatedItems = response.data.data.items || response.data.data.cart_items || []
+      cartCount.value = updatedItems.reduce((acc, item) => acc + item.quantity, 0)
+      
+      alert(`${product.value.name} berhasil ditambahkan ke keranjang.`)
+    }
+  } catch (error) {
+    console.error('Gagal menambahkan ke keranjang:', error)
+    alert(error.response?.data?.message || 'Terjadi kesalahan saat menambah ke keranjang.')
+  } finally {
+    isSubmitting.value = false
+  }
 }
 
+// Tombol Buy It Now (Langsung senyap masuk database TANPA alert keranjang, lalu pindah ke checkout)
+const buyNow = async () => {
+  if (isSubmitting.value || !product.value) return
+  isSubmitting.value = true
 
-// Buy now
-const buyNow = () => {
+  try {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      alert('Silakan login terlebih dahulu untuk melakukan pembelian.')
+      router.push('/login')
+      return
+    }
 
-  router.push('/checkout')
+    const payload = {
+      product_id: product.value.id,
+      quantity: quantity.value,
+      size: product.value.size || 'All Size',
+      color: product.value.color || 'Default'
+    }
 
+    // Kirim data ke backend secara senyap
+    const response = await axios.post('http://127.0.0.1:8000/api/cart', payload, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
+
+    if (response.data.status) {
+      const updatedItems = response.data.data.items || response.data.data.cart_items || []
+      cartCount.value = updatedItems.reduce((acc, item) => acc + item.quantity, 0)
+      
+      // Langsung navigasi ke halaman checkout tanpa memunculkan alert keranjang
+      router.push('/checkout')
+    }
+  } catch (error) {
+    console.error('Gagal memproses Buy Now:', error)
+    alert(error.response?.data?.message || 'Terjadi kesalahan saat memproses pembelian.')
+  } finally {
+    isSubmitting.value = false
+  }
 }
-
 </script>
 
 
 <style scoped>
-
-/* =====================================================
-   GLOBAL
-===================================================== */
-
-* {
-  box-sizing: border-box;
-}
-
-.product-page {
-  min-height: 100vh;
-  background: #ffffff;
-  color: #111827;
-  font-family: Georgia, "Times New Roman", serif;
-}
-
-
-/* =====================================================
-   HEADER
-===================================================== */
-
-.header {
-  height: 74px;
-  background: #ffffff;
-  position: relative;
-  z-index: 10;
-}
-
-.header-inner {
-  height: 100%;
-  padding: 0 44px;
-
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-
-  align-items: center;
-}
-
-
-/* =====================================================
-   LEFT NAV
-===================================================== */
-
-.left-nav {
-  display: flex;
-  align-items: center;
-  gap: 28px;
-}
-
-.left-nav a {
-  color: #0f172a;
-
-  text-decoration: none;
-
-  font-family: Arial, Helvetica, sans-serif;
-
-  font-size: 13px;
-
-  font-weight: 700;
-
-  letter-spacing: 1.2px;
-
-  transition: opacity 0.2s ease;
-}
-
-.left-nav a:hover {
-  opacity: 0.55;
-}
-
-
-/* =====================================================
-   LOGO
-===================================================== */
-
-.logo {
-  color: #0f172a;
-
-  text-decoration: none;
-
-  font-family: Arial, Helvetica, sans-serif;
-
-  font-size: 30px;
-
-  font-weight: 700;
-
-  letter-spacing: 4px;
-}
-
-
-/* =====================================================
-   RIGHT NAV
-===================================================== */
-
-.right-nav {
-  justify-self: end;
-
-  display: flex;
-
-  align-items: center;
-
-  gap: 21px;
-}
-
-.icon-button {
-  border: none;
-
-  background: transparent;
-
-  color: #0f172a;
-
-  padding: 0;
-
-  display: flex;
-
-  align-items: center;
-
-  justify-content: center;
-
-  cursor: pointer;
-
-  text-decoration: none;
-}
-
-.cart-icon {
-  position: relative;
-}
-
-.cart-count {
-  position: absolute;
-
-  top: -9px;
-
-  right: -8px;
-
-  width: 15px;
-
-  height: 15px;
-
-  border-radius: 50%;
-
-  background: #ffffff;
-
-  color: #111827;
-
-  font-family: Arial, sans-serif;
-
-  font-size: 9px;
-
-  font-weight: 700;
-
-  display: flex;
-
-  align-items: center;
-
-  justify-content: center;
-}
-
-
-/* =====================================================
-   PRODUCT CONTAINER
-===================================================== */
-
-.product-container {
-  max-width: 1400px;
-
-  margin: auto;
-
-  padding: 70px 58px 120px;
-}
-
-
-/* =====================================================
-   BACK
-===================================================== */
-
-.back-link {
-  display: inline-block;
-
-  margin-bottom: 50px;
-
-  color: #475569;
-
-  font-family: Arial, sans-serif;
-
-  font-size: 12px;
-
-  text-decoration: none;
-}
-
-.back-link:hover {
-  color: #111827;
-}
-
-
-/* =====================================================
-   PRODUCT DETAIL
-===================================================== */
-
-.product-detail {
-  display: grid;
-
-  grid-template-columns: 1fr 1fr;
-
-  gap: 100px;
-
-  align-items: start;
-}
-
-
-/* =====================================================
-   PRODUCT DISPLAY
-===================================================== */
-
-.product-display {
-  width: 100%;
-}
-
-.product-placeholder {
-  height: 650px;
-
-  background: #f1f3f5;
-
-  display: flex;
-
-  align-items: center;
-
-  justify-content: center;
-}
-
-.product-placeholder span {
-  font-family: Arial, sans-serif;
-
-  font-size: 20px;
-
-  font-weight: 700;
-
-  letter-spacing: 5px;
-
-  color: #cbd5e1;
-}
-
-
-/* =====================================================
-   PRODUCT INFO
-===================================================== */
-
-.product-info {
-  padding-top: 30px;
-
-  max-width: 520px;
-}
-
-.product-category {
-  margin: 0 0 18px;
-
-  font-family: Arial, sans-serif;
-
-  font-size: 10px;
-
-  font-weight: 700;
-
-  letter-spacing: 2px;
-
-  color: #64748b;
-}
-
-.product-info h1 {
-  margin: 0;
-
-  font-size: clamp(42px, 5vw, 68px);
-
-  line-height: 0.98;
-
-  font-weight: 400;
-
-  letter-spacing: -2px;
-}
-
-.price {
-  margin: 25px 0;
-
-  font-family: Arial, sans-serif;
-
-  font-size: 17px;
-
-  color: #334155;
-}
-
-.line {
-  width: 100%;
-
-  height: 1px;
-
-  background: #cbd5e1;
-
-  margin: 30px 0;
-}
-
-.description {
-  font-family: Arial, sans-serif;
-
-  font-size: 14px;
-
-  line-height: 1.8;
-
-  color: #64748b;
-
-  margin-bottom: 15px;
-}
-
-
-/* =====================================================
-   INFORMATION
-===================================================== */
-
-.information {
-  margin-top: 35px;
-
-  border-top: 1px solid #e2e8f0;
-}
-
-.info-row {
-  display: flex;
-
-  justify-content: space-between;
-
-  padding: 15px 0;
-
-  border-bottom: 1px solid #e2e8f0;
-
-  font-family: Arial, sans-serif;
-
-  font-size: 12px;
-}
-
-.info-row span {
-  color: #64748b;
-}
-
-.info-row strong {
-  font-weight: 500;
-
-  color: #111827;
-}
-
-
-/* =====================================================
-   QUANTITY
-===================================================== */
-
-.quantity-section {
-  margin-top: 30px;
-}
-
-.quantity-section p {
-  margin-bottom: 10px;
-
-  font-family: Arial, sans-serif;
-
-  font-size: 10px;
-
-  font-weight: 700;
-
-  letter-spacing: 1.5px;
-
-  color: #64748b;
-}
-
-.quantity {
-  width: 110px;
-
-  height: 42px;
-
-  border: 1px solid #cbd5e1;
-
-  display: flex;
-
-  align-items: center;
-
-  justify-content: space-between;
-}
-
-.quantity button {
-  width: 35px;
-
-  height: 100%;
-
-  border: none;
-
-  background: transparent;
-
-  cursor: pointer;
-
-  font-size: 18px;
-
-  color: #334155;
-}
-
-.quantity span {
-  font-family: Arial, sans-serif;
-
-  font-size: 13px;
-}
-
-
-/* =====================================================
-   BUTTONS
-===================================================== */
-
-.buttons {
-  margin-top: 30px;
-
-  display: flex;
-
-  flex-direction: column;
-
-  gap: 10px;
-}
-
-.add-button,
-.buy-button {
-  width: 100%;
-
-  height: 55px;
-
-  font-family: Arial, sans-serif;
-
-  font-size: 11px;
-
-  font-weight: 700;
-
-  letter-spacing: 1px;
-
-  cursor: pointer;
-
-  transition: 0.2s;
-}
-
-.add-button {
-  background: #111827;
-
-  color: white;
-
-  border: 1px solid #111827;
-}
-
-.add-button:hover {
-  background: #334155;
-}
-
-.buy-button {
-  background: white;
-
-  color: #111827;
-
-  border: 1px solid #111827;
-}
-
-.buy-button:hover {
-  background: #f1f3f5;
-}
-
-
-/* =====================================================
-   SHIPPING
-===================================================== */
-
-.shipping-info {
-  margin-top: 18px;
-
-  text-align: center;
-
-  font-family: Arial, sans-serif;
-
-  font-size: 10px;
-
-  color: #64748b;
-}
-
-
-/* =====================================================
-   BOTTOM DESCRIPTION
-===================================================== */
-
-.bottom-description {
-  margin-top: 140px;
-
-  padding-top: 70px;
-
-  border-top: 1px solid #e2e8f0;
-
-  display: grid;
-
-  grid-template-columns: 1fr 1fr;
-
-  gap: 100px;
-}
-
-.section-label {
-  margin: 0 0 20px;
-
-  font-family: Arial, sans-serif;
-
-  font-size: 10px;
-
-  font-weight: 700;
-
-  letter-spacing: 2px;
-
-  color: #64748b;
-}
-
-.description-column h2 {
-  margin: 0;
-
-  font-size: 45px;
-
-  line-height: 1;
-
-  font-weight: 400;
-
-  letter-spacing: -1px;
-}
-
-.description-text {
-  max-width: 500px;
-}
-
-.description-text p {
-  margin: 0 0 20px;
-
-  font-family: Arial, sans-serif;
-
-  font-size: 14px;
-
-  line-height: 1.9;
-
-  color: #64748b;
-}
-
-
-/* =====================================================
-   FOOTER
-===================================================== */
-
-.footer {
-  padding: 70px 58px 35px;
-
-  background: #f1f3f5;
-
-  text-align: center;
-}
-
-.footer-logo {
-  font-family: Arial, sans-serif;
-
-  font-size: 23px;
-
-  font-weight: 700;
-
-  letter-spacing: 3px;
-}
-
-.footer p {
-  margin: 12px 0 35px;
-
-  font-size: 13px;
-
-  color: #64748b;
-}
-
-.footer-line {
-  max-width: 1300px;
-
-  height: 1px;
-
-  background: #cbd5e1;
-
-  margin: auto auto 25px;
-}
-
-.footer span {
-  font-family: Arial, sans-serif;
-
-  font-size: 10px;
-
-  color: #64748b;
-}
-
-
-/* =====================================================
-   SUPPORT
-===================================================== */
-
-.support-button {
-  position: fixed;
-
-  right: 16px;
-
-  bottom: 12px;
-
-  border: none;
-
-  border-radius: 20px;
-
-  background: #334155;
-
-  color: white;
-
-  padding: 10px 17px;
-
-  font-family: Arial, sans-serif;
-
-  font-size: 12px;
-
-  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.15);
-
-  cursor: pointer;
-}
-
-
-/* =====================================================
-   RESPONSIVE
-===================================================== */
+* { box-sizing: border-box; }
+.product-page { min-height: 100vh; background: #ffffff; color: #111827; font-family: Georgia, "Times New Roman", serif; }
+
+.header { height: 74px; background: #ffffff; position: relative; z-index: 10; border-bottom: 1px solid #e2e8f0; }
+.header-inner { height: 100%; padding: 0 44px; display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; }
+
+.left-nav { display: flex; align-items: center; gap: 28px; }
+.left-nav a { color: #0f172a; text-decoration: none; font-family: Arial, Helvetica, sans-serif; font-size: 13px; font-weight: 700; letter-spacing: 1.2px; transition: opacity 0.2s ease; }
+.left-nav a:hover { opacity: 0.55; }
+
+.logo { color: #0f172a; text-decoration: none; font-family: Arial, Helvetica, sans-serif; font-size: 30px; font-weight: 700; letter-spacing: 4px; }
+
+.right-nav { justify-self: end; display: flex; align-items: center; gap: 21px; }
+.icon-button { border: none; background: transparent; color: #0f172a; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; text-decoration: none; }
+.cart-icon { position: relative; }
+.cart-count { position: absolute; top: -9px; right: -8px; width: 15px; height: 15px; border-radius: 50%; background: #111827; color: #ffffff; font-family: Arial, sans-serif; font-size: 9px; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+
+.product-container { max-width: 1400px; margin: auto; padding: 70px 58px 120px; }
+.back-link { display: inline-block; margin-bottom: 50px; color: #475569; font-family: Arial, sans-serif; font-size: 12px; text-decoration: none; }
+.back-link:hover { color: #111827; }
+
+.product-detail { display: grid; grid-template-columns: 1fr 1fr; gap: 100px; align-items: start; }
+.product-display { width: 100%; }
+.product-image-container { height: 650px; background: #f1f3f5; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.product-image-container img { width: 100%; height: 100%; object-fit: cover; }
+
+.product-info { padding-top: 30px; max-width: 520px; }
+.product-category { margin: 0 0 18px; font-family: Arial, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 2px; color: #64748b; }
+.product-info h1 { margin: 0; font-size: clamp(36px, 4vw, 55px); line-height: 1.1; font-weight: 400; }
+.price { margin: 25px 0; font-family: Arial, sans-serif; font-size: 18px; font-weight: bold; color: #334155; }
+.line { width: 100%; height: 1px; background: #cbd5e1; margin: 30px 0; }
+.description { font-family: Arial, sans-serif; font-size: 14px; line-height: 1.8; color: #64748b; margin-bottom: 15px; }
+
+.information { margin-top: 35px; border-top: 1px solid #e2e8f0; }
+.info-row { display: flex; justify-content: space-between; padding: 15px 0; border-bottom: 1px solid #e2e8f0; font-family: Arial, sans-serif; font-size: 12px; }
+.info-row span { color: #64748b; }
+.info-row strong { font-weight: 500; color: #111827; }
+
+.quantity-section { margin-top: 30px; }
+.quantity-section p { margin-bottom: 10px; font-family: Arial, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: #64748b; }
+.quantity { width: 110px; height: 42px; border: 1px solid #cbd5e1; display: flex; align-items: center; justify-content: space-between; }
+.quantity button { width: 35px; height: 100%; border: none; background: transparent; cursor: pointer; font-size: 18px; color: #334155; }
+.quantity span { font-family: Arial, sans-serif; font-size: 13px; }
+
+.buttons { margin-top: 30px; display: flex; flex-direction: column; gap: 10px; }
+.add-button, .buy-button { width: 100%; height: 55px; font-family: Arial, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1px; cursor: pointer; transition: 0.2s; }
+.add-button { background: #111827; color: white; border: 1px solid #111827; }
+.add-button:hover { background: #334155; }
+.add-button:disabled { background: #94a3b8; border-color: #94a3b8; cursor: not-allowed; }
+.buy-button { background: white; color: #111827; border: 1px solid #111827; }
+.buy-button:hover { background: #f1f3f5; }
+.buy-button:disabled { background: #f1f3f5; color: #94a3b8; cursor: not-allowed; }
+
+.shipping-info { margin-top: 18px; text-align: center; font-family: Arial, sans-serif; font-size: 10px; color: #64748b; }
+
+.bottom-description { margin-top: 140px; padding-top: 70px; border-top: 1px solid #e2e8f0; display: grid; grid-template-columns: 1fr 1fr; gap: 100px; }
+.section-label { margin: 0 0 20px; font-family: Arial, sans-serif; font-size: 10px; font-weight: 700; letter-spacing: 2px; color: #64748b; }
+.description-column h2 { margin: 0; font-size: 45px; line-height: 1; font-weight: 400; letter-spacing: -1px; }
+.description-text { max-width: 500px; }
+.description-text p { margin: 0 0 20px; font-family: Arial, sans-serif; font-size: 14px; line-height: 1.9; color: #64748b; }
+
+.footer { padding: 70px 58px 35px; background: #f1f3f5; text-align: center; }
+.footer-logo { font-family: Arial, sans-serif; font-size: 23px; font-weight: 700; letter-spacing: 3px; }
+.footer p { margin: 12px 0 35px; font-size: 13px; color: #64748b; }
+.footer-line { max-width: 1300px; height: 1px; background: #cbd5e1; margin: auto auto 25px; }
+.footer span { font-family: Arial, sans-serif; font-size: 10px; color: #64748b; }
+
+.support-button { position: fixed; right: 16px; bottom: 12px; border: none; border-radius: 20px; background: #334155; color: white; padding: 10px 17px; font-family: Arial, sans-serif; font-size: 12px; box-shadow: 0 3px 12px rgba(0, 0, 0, 0.15); cursor: pointer; }
 
 @media (max-width: 900px) {
-
-  .product-detail {
-    grid-template-columns: 1fr;
-
-    gap: 50px;
-  }
-
-  .product-placeholder {
-    height: 450px;
-  }
-
-  .product-info {
-    max-width: none;
-  }
-
-  .bottom-description {
-    grid-template-columns: 1fr;
-
-    gap: 40px;
-  }
+  .product-detail { grid-template-columns: 1fr; gap: 50px; }
+  .product-image-container { height: 450px; }
+  .product-info { max-width: none; }
+  .bottom-description { grid-template-columns: 1fr; gap: 40px; }
 }
-
 
 @media (max-width: 600px) {
-
-  .header-inner {
-    padding: 0 20px;
-  }
-
-  .left-nav {
-    gap: 12px;
-  }
-
-  .left-nav a {
-    font-size: 10px;
-  }
-
-  .logo {
-    font-size: 19px;
-
-    letter-spacing: 2px;
-  }
-
-  .right-nav {
-    gap: 12px;
-  }
-
-  .product-container {
-    padding: 50px 22px 80px;
-  }
-
-  .product-placeholder {
-    height: 350px;
-  }
-
-  .product-info h1 {
-    font-size: 45px;
-  }
-
-  .bottom-description {
-    margin-top: 90px;
-  }
-
-  .description-column h2 {
-    font-size: 38px;
-  }
-
-  .footer {
-    padding: 60px 22px 30px;
-  }
+  .header-inner { padding: 0 20px; }
+  .left-nav { gap: 12px; }
+  .logo { font-size: 19px; letter-spacing: 2px; }
+  .product-container { padding: 50px 22px 80px; }
+  .product-image-container { height: 350px; }
+  .bottom-description { margin-top: 90px; }
 }
-
-
-@media (max-width: 450px) {
-
-  .left-nav a:nth-child(2) {
-    display: none;
-  }
-
-  .logo {
-    font-size: 16px;
-  }
-
-  .product-placeholder {
-    height: 280px;
-  }
-
-}
-
 </style>

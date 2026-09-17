@@ -35,22 +35,16 @@ const categoryForm = ref({
   is_active: true
 })
 
-// Form State Produk
+// Form State Produk (Tanpa discount_price dan is_featured)
 const productForm = ref({
   id: null,
   category_id: '',
   name: '',
   slug: '',
   description: '',
-  size: '',
-  color: '',
-  material: '',
   price: 0,
-  discount_price: 0,
   stock: 0,
-  weight: 0,
-  is_active: true,
-  is_featured: false
+  is_active: true
 })
 
 // Ambil token dan set header authorization
@@ -138,7 +132,16 @@ const deleteCategory = async (id) => {
 const openProductModal = (product = null) => {
   if (product) {
     isEditing.value = true
-    productForm.value = { ...product }
+    productForm.value = { 
+      id: product.id,
+      category_id: product.category_id || '',
+      name: product.name || '',
+      slug: product.slug || '',
+      description: product.description || '',
+      price: product.price || 0,
+      stock: product.stock || 0,
+      is_active: product.is_active !== undefined ? Boolean(product.is_active) : true
+    }
   } else {
     isEditing.value = false
     productForm.value = {
@@ -147,15 +150,9 @@ const openProductModal = (product = null) => {
       name: '',
       slug: '',
       description: '',
-      size: '',
-      color: '',
-      material: '',
       price: 0,
-      discount_price: 0,
       stock: 0,
-      weight: 0,
-      is_active: true,
-      is_featured: false
+      is_active: true
     }
   }
   showProductModal.value = true
@@ -200,7 +197,7 @@ onMounted(() => {
     
     <!-- ================= SIDEBAR ================= -->
     <aside :class="['admin-sidebar', { closed: !isSidebarOpen }]">
-      <div class="sidebar-top">
+      <div class="sidebar-top" @click="toggleSidebar" title="Toggle Sidebar">
         <div class="sidebar-brand-icon">P</div>
         <span v-if="isSidebarOpen" class="sidebar-brand-title">PROVIDENTIAL</span>
       </div>
@@ -239,13 +236,6 @@ onMounted(() => {
     <main :class="['admin-main', { expanded: !isSidebarOpen }]">
       
       <!-- Top Bar -->
-      <div class="top-nav-bar">
-        <button class="toggle-sidebar-btn" @click="toggleSidebar" title="Toggle Sidebar">
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
-        </button>
-        <span class="top-nav-label">Dashboard Panel</span>
-      </div>
-
       <header class="main-header">
         <div class="header-title-wrap">
           <span class="sub-brand-tag">ADMINISTRATION PANEL</span>
@@ -331,7 +321,6 @@ onMounted(() => {
                 <td>{{ index + 1 }}</td>
                 <td>
                   <span class="bold-text">{{ prod.name }}</span>
-                  <div style="font-size: 11px; color: #718096;">Size: {{ prod.size || '-' }} | Warna: {{ prod.color || '-' }}</div>
                 </td>
                 <td>{{ prod.category?.name || '-' }}</td>
                 <td>Rp {{ Number(prod.price).toLocaleString('id-ID') }}</td>
@@ -377,18 +366,17 @@ onMounted(() => {
 
     <!-- ================= MODAL PRODUK ================= -->
     <div v-if="showProductModal" class="modal-overlay">
-      <div class="modal-card wide">
+      <div class="modal-card">
         <h3>{{ isEditing ? 'Edit Informasi Produk' : 'Tambah Produk Baru' }}</h3>
         <form @submit.prevent="saveProduct" class="modal-form">
-          <div class="form-grid-2">
-            <div class="form-group">
-              <label>Nama Produk</label>
-              <input v-model="productForm.name" type="text" required placeholder="Contoh: Overcoat Wool Black" @input="generateSlug" />
-            </div>
-            <div class="form-group">
-              <label>Slug URL</label>
-              <input v-model="productForm.slug" type="text" required />
-            </div>
+          <div class="form-group">
+            <label>Nama Produk</label>
+            <input v-model="productForm.name" type="text" required placeholder="Contoh: Overcoat Wool Black" @input="generateSlug" />
+          </div>
+          
+          <div class="form-group">
+            <label>Slug URL</label>
+            <input v-model="productForm.slug" type="text" required />
           </div>
           
           <div class="form-grid-2">
@@ -405,19 +393,9 @@ onMounted(() => {
             </div>
           </div>
 
-          <div class="form-grid-3">
-            <div class="form-group">
-              <label>Stok Ketersediaan</label>
-              <input v-model="productForm.stock" type="number" required min="0" />
-            </div>
-            <div class="form-group">
-              <label>Ukuran (Size)</label>
-              <input v-model="productForm.size" type="text" placeholder="M, L, XL" />
-            </div>
-            <div class="form-group">
-              <label>Warna</label>
-              <input v-model="productForm.color" type="text" placeholder="Hitam / Navy" />
-            </div>
+          <div class="form-group">
+            <label>Stok Ketersediaan</label>
+            <input v-model="productForm.stock" type="number" required min="0" />
           </div>
 
           <div class="form-group">
@@ -473,6 +451,11 @@ ADMIN LAYOUT SYSTEM & MODERN DESIGNS
   align-items: center;
   gap: 15px;
   border-bottom: 1px solid #222e3d;
+  cursor: pointer;
+  user-select: none;
+}
+.sidebar-top:hover {
+  background-color: rgba(255, 255, 255, 0.03);
 }
 
 .sidebar-brand-icon {
@@ -565,23 +548,6 @@ ADMIN LAYOUT SYSTEM & MODERN DESIGNS
   transition: margin-left 0.3s ease;
 }
 .admin-main.expanded { margin-left: 70px; }
-
-.top-nav-bar {
-  display: flex;
-  align-items: center;
-  gap: 20px;
-  margin-bottom: 35px;
-}
-
-.toggle-sidebar-btn {
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 5px;
-  color: #4a5568;
-}
-
-.top-nav-label { font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: #718096; }
 
 .main-header {
   display: flex;
@@ -718,12 +684,10 @@ MODAL WINDOW DIALOGS
   max-width: 500px;
   box-shadow: 0 10px 25px rgba(0,0,0,0.1);
 }
-.modal-card.wide { max-width: 650px; }
 .modal-card h3 { margin: 0 0 25px 0; font-size: 18px; font-weight: 600; }
 
 .modal-form { display: flex; flex-direction: column; gap: 20px; }
 .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.form-grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; }
 
 .form-group { display: flex; flex-direction: column; gap: 8px; }
 .form-group label { font-size: 12px; font-weight: 600; color: #4a5568; }
@@ -753,6 +717,6 @@ MODAL WINDOW DIALOGS
   .admin-main { margin-left: 70px; padding: 20px; }
   .admin-sidebar { width: 70px; }
   .sidebar-brand-title, .link-label, .badge-count, .sidebar-footer span { display: none; }
-  .form-grid-2, .form-grid-3 { grid-template-columns: 1fr; gap: 20px; }
+  .form-grid-2 { grid-template-columns: 1fr; gap: 20px; }
 }
 </style>

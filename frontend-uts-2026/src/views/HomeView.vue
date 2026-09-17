@@ -13,11 +13,16 @@ const featuredProducts = ref([])
 const latestProducts = ref([])
 const cartCount = ref(0)
 const isLoggedIn = ref(false)
-const isAdmin = ref(false) // <-- State baru untuk status admin
+const isAdmin = ref(false)
 
-// Penentu arah link tombol ikon User secara dinamis
+// STATE KHUSUS SEARCH OVERLAY
+const isSearchOpen = ref(false)
+const searchQuery = ref('')
+const selectedCategory = ref('All')
+const allProductsForSearch = ref([]) // Menyimpan seluruh produk untuk pencarian
+
+// Penentu arah link tombol ikon User secara dinamis (Selalu ke Profile atau Login)
 const accountLink = computed(() => {
-  if (isAdmin.value) return '/admin'
   return isLoggedIn.value ? '/user' : '/login'
 })
 
@@ -34,7 +39,8 @@ const fetchHomeData = async () => {
     const prodRes = await axios.get('/public/produk')
     const products = prodRes.data.data || prodRes.data
 
-    // Membagi produk (4 untuk unggulan, 4 berikutnya untuk terbaru)
+    // Simpan data untuk search overlay & bagi produk
+    allProductsForSearch.value = products
     featuredProducts.value = products.slice(0, 4)
     latestProducts.value = products.slice(4, 8)
 
@@ -44,19 +50,15 @@ const fetchHomeData = async () => {
       isLoggedIn.value = true
       axios.defaults.headers.common['Authorization'] = `Bearer ${token}`
 
-      // Opsional: Jika backend Anda memiliki endpoint profil untuk cek role (contoh: /user atau /auth/me)
       try {
-        const userRes = await axios.get('/user') // Sesuaikan endpoint user/profil di Laravel Anda
+        const userRes = await axios.get('/profile') 
         const userData = userRes.data.data || userRes.data
         
-        // Sesuaikan kondisi ini dengan field role dari database Anda (misal: role === 'admin' atau is_admin === 1)
         if (userData.role === 'admin' || userData.is_admin === 1) {
           isAdmin.value = true
         }
       } catch (err) {
-        // Fallback darurat jika endpoint /user belum ada: 
-        // Anda bisa menyetel manual / mendeteksi email admin tertentu di sini
-        console.log('Gagal memuat profil, menggunakan cek token dasar.')
+        console.log('Gagal memuat profil, menggunakan cek token dasar.', err)
       }
 
       // Ambil data keranjang
@@ -69,6 +71,58 @@ const fetchHomeData = async () => {
     }
   } catch (error) {
     console.error('Gagal memuat data dari API Laravel:', error)
+  }
+}
+
+// ==========================================
+// SEARCH OVERLAY LOGIC
+// ==========================================
+const openSearchModal = async () => {
+  isSearchOpen.value = true
+  if (allProductsForSearch.value.length === 0) {
+    try {
+      const res = await axios.get('/public/produk')
+      allProductsForSearch.value = res.data.data || res.data
+    } catch (err) {
+      console.error('Gagal memuat produk untuk search:', err)
+    }
+  }
+}
+
+const closeSearchModal = () => {
+  isSearchOpen.value = false
+  searchQuery.value = ''
+  selectedCategory.value = 'All'
+}
+
+const filteredSearchResults = computed(() => {
+  let result = allProductsForSearch.value
+
+  if (searchQuery.value.trim() !== '') {
+    const keyword = searchQuery.value.toLowerCase().trim()
+    result = result.filter(product =>
+      product.name.toLowerCase().includes(keyword) ||
+      (product.description && product.description.toLowerCase().includes(keyword))
+    )
+  }
+
+  if (selectedCategory.value !== 'All') {
+    result = result.filter(product => 
+      product.category_id == selectedCategory.value || 
+      (product.category && product.category.name === selectedCategory.value)
+    )
+  }
+
+  return result
+})
+
+const addToCartFromSearch = async (product) => {
+  try {
+    await axios.post('/cart', { product_id: product.id, quantity: 1 })
+    cartCount.value++
+    alert(`${product.name} berhasil dimasukkan ke keranjang!`)
+  } catch (err) {
+    alert('Silakan login terlebih dahulu untuk menambah ke keranjang.')
   }
 }
 
@@ -88,13 +142,6 @@ onMounted(() => {
         <div class="nav-left">
           <router-link to="/shop" class="nav-link">SHOP</router-link>
           <router-link to="/about" class="nav-link">OUR MISSION</router-link>
-          
-          <!-- Tombol khusus Admin yang hanya muncul jika role-nya admin -->
-          <!-- Tombol Admin Panel -->
-          <router-link to="/admin" class="btn-admin-panel" title="Masuk ke Admin Panel">
-            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-            <span>Admin Panel</span>
-          </router-link>
         </div>
 
         <div class="nav-center">
@@ -102,13 +149,12 @@ onMounted(() => {
         </div>
 
         <div class="nav-right">
-          <router-link to="/search" class="icon-btn" aria-label="Search">
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <circle cx="11" cy="11" r="8"/>
-              <path d="m21 21-4.3-4.3"/>
-            </svg>
-          </router-link>
+          <!-- Tombol Search -->
+          <button @click="openSearchModal" class="icon-btn" aria-label="Search">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          </button>
 
+          <!-- Tombol Cart -->
           <router-link to="/cart" class="icon-btn cart-btn" aria-label="Cart">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/>
@@ -118,8 +164,14 @@ onMounted(() => {
             <span v-if="cartCount > 0" class="cart-badge">{{ cartCount }}</span>
           </router-link>
 
-          <!-- Jika admin, ikon ini otomatis mengarah ke /admin. Jika customer ke /profile, jika belum login ke /login -->
-          <router-link :to="accountLink" class="icon-btn" :title="isAdmin ? 'Panel Admin' : 'Akun Saya'" aria-label="Account">
+          <!-- TOMBOL ADMIN PANEL (Hanya muncul jika status user adalah admin) -->
+          <router-link v-if="isAdmin" to="/admin" class="admin-panel-badge" title="Panel Admin">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+            <span>ADMIN PANEL</span>
+          </router-link>
+
+          <!-- Tombol Akun / Profile (Selalu mengarah ke /user atau /login) -->
+          <router-link :to="accountLink" class="icon-btn" :title="isLoggedIn ? 'Akun Saya' : 'Login'" aria-label="Account">
             <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/>
               <circle cx="12" cy="7" r="4"/>
@@ -150,7 +202,7 @@ onMounted(() => {
     <!-- =====================================
          CATEGORY SECTION
     ====================================== -->
-    <section class="section-container ">
+    <section class="section-container">
       <div class="section-header">
         <span class="sub-heading">ARCHIVES</span>
         <h2>Shop By Category</h2>
@@ -273,6 +325,72 @@ onMounted(() => {
       <span>SUPPORT</span>
     </button>
 
+
+    <!-- =========================================================
+         SPLIT-SCREEN SEARCH OVERLAY MODAL
+    ========================================================== -->
+    <div v-if="isSearchOpen" class="search-overlay-backdrop">
+      <div class="search-split-container">
+        
+        <!-- SISI KIRI: INPUT & FILTER -->
+        <div class="search-sidebar-pane">
+          <button class="close-modal-btn" @click="closeSearchModal">&times; ESC</button>
+          <span class="sub-heading">QUICK FIND</span>
+          <h2>Search Collection</h2>
+          <p class="desc">Ketik nama produk untuk melihat hasil secara instan.</p>
+
+          <div class="search-input-box">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+            <input 
+              v-model="searchQuery" 
+              type="text" 
+              placeholder="Cari jaket, kaos, sepatu..." 
+              autofocus
+            />
+            <button v-if="searchQuery" @click="searchQuery = ''" class="clear-input">&times;</button>
+          </div>
+
+          <div class="filter-group">
+            <label>Filter Kategori:</label>
+            <select v-model="selectedCategory" class="category-select">
+              <option value="All">Semua Kategori</option>
+              <option v-for="cat in categories" :key="cat.id" :value="cat.id">
+                {{ cat.name }}
+              </option>
+            </select>
+          </div>
+
+          <div class="search-stats">
+            <span>Ditemukan: <strong>{{ filteredSearchResults.length }}</strong> produk</span>
+          </div>
+        </div>
+
+        <!-- SISI KANAN: HASIL LIVE SEARCH -->
+        <div class="search-results-pane">
+          <div class="results-header">
+            <h3>Hasil Pencarian</h3>
+            <span class="results-keyword" v-if="searchQuery">Keyword: "{{ searchQuery }}"</span>
+          </div>
+
+          <div class="results-list" v-if="filteredSearchResults.length > 0">
+            <div v-for="prod in filteredSearchResults" :key="prod.id" class="result-product-card">
+              <img :src="prod.image || 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?q=80&w=300'" :alt="prod.name" />
+              <div class="result-info">
+                <h4>{{ prod.name }}</h4>
+                <span class="price">Rp {{ Number(prod.price).toLocaleString('id-ID') }}</span>
+              </div>
+              <button class="btn-add-cart" @click="addToCartFromSearch(prod)">+ CART</button>
+            </div>
+          </div>
+
+          <div class="no-results" v-else>
+            <p>Produk tidak ditemukan di database.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
   </div>
 </template>
 
@@ -280,17 +398,17 @@ onMounted(() => {
 @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Syne:wght@700;800&display=swap');
 
 /* =========================================
-   GLOBAL THEME (WARNA AWAL / KREM KLASIK)
+   GLOBAL & LAYOUT STYLES
    ========================================= */
 .street-container {
   font-family: 'Space Grotesk', sans-serif;
-  background-color: #ffffff;
+  background-color: #fff;
   color: #17243a;
   min-height: 100vh;
   overflow-x: hidden;
 }
 
-/* ================= NAVBAR ================= */
+/* NAVBAR */
 .street-navbar-wrapper {
   position: sticky;
   top: 0;
@@ -309,11 +427,7 @@ onMounted(() => {
   padding: 1.5rem 3rem;
 }
 
-.nav-left, .nav-right {
-  display: flex;
-  align-items: center;
-  gap: 2.5rem;
-}
+.nav-left, .nav-right { display: flex; align-items: center; gap: 2rem; }
 
 .nav-link {
   color: #5c677d;
@@ -321,15 +435,10 @@ onMounted(() => {
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 2px;
-  transition: color 0.2s ease;
 }
 .nav-link:hover { color: #17243a; }
 
-.nav-center {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-}
+.nav-center { position: absolute; left: 50%; transform: translateX(-50%); }
 
 .brand-logo {
   font-family: 'Syne', sans-serif;
@@ -347,16 +456,36 @@ onMounted(() => {
   color: #17243a;
   cursor: pointer;
   padding: 0;
-  transition: opacity 0.2s ease;
+  display: flex;
+  align-items: center;
 }
 .icon-btn:hover { opacity: 0.6; }
+
+/* STYLE KHUSUS TOMBOL ADMIN PANEL */
+.admin-panel-badge {
+  background: #17243a;
+  color: #fff;
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 1px;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  transition: background 0.2s;
+}
+.admin-panel-badge:hover {
+  background: #27364e;
+}
 
 .cart-badge {
   position: absolute;
   top: -6px;
   right: -8px;
   background: #17243a;
-  color: #ffffff;
+  color: #fff;
   font-size: 9px;
   font-weight: 800;
   width: 16px;
@@ -367,7 +496,7 @@ onMounted(() => {
   justify-content: center;
 }
 
-/* ================= HERO SECTION ================= */
+/* HERO SECTION */
 .hero-section {
   position: relative;
   height: 85vh;
@@ -379,7 +508,7 @@ onMounted(() => {
 .hero-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(100deg, rgba(255, 250, 242, 0.96) 0%, rgba(255, 250, 242, 0.88) 40%, rgba(255, 250, 242, 0.4) 70%, rgba(255, 250, 242, 0.15) 100%);
+  background: linear-gradient(100deg, rgba(255, 250, 242, 0.96) 0%, rgba(255, 250, 242, 0.4) 70%);
 }
 
 .hero-content {
@@ -392,12 +521,12 @@ onMounted(() => {
 }
 
 .hero-badge {
-  display: inline-block;
   font-size: 0.7rem;
   font-weight: 700;
   letter-spacing: 3px;
   color: #5c677d;
   margin-bottom: 1.2rem;
+  display: block;
   text-transform: uppercase;
 }
 
@@ -406,13 +535,9 @@ onMounted(() => {
   font-size: 4rem;
   font-weight: 800;
   line-height: 1.05;
-  margin: 0 0 1.5rem 0;
-  color: #17243a;
+  margin: 0 0 1.5rem;
 }
-
-.hero-title span {
-  color: #717784;
-}
+.hero-title span { color: #717784; }
 
 .hero-subtitle {
   max-width: 500px;
@@ -422,48 +547,27 @@ onMounted(() => {
   margin-bottom: 2.5rem;
 }
 
-.hero-actions {
-  display: flex;
-  gap: 1rem;
-}
+.hero-actions { display: flex; gap: 1rem; }
 
-.btn-primary {
-  background: #17243a;
-  color: #ffffff;
-  padding: 1rem 2.2rem;
+/* COMMON BUTTONS */
+.btn-primary, .btn-outline, .btn-white, .btn-dark {
   font-size: 0.75rem;
   font-weight: 700;
   letter-spacing: 2px;
   text-decoration: none;
-  border-radius: 2px;
-  transition: background 0.2s ease;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  cursor: pointer;
 }
+
+.btn-primary { background: #17243a; color: #fff; padding: 1rem 2.2rem; border: none; }
 .btn-primary:hover { background: #27364e; }
 
-.btn-outline {
-  background: transparent;
-  color: #17243a;
-  border: 1px solid rgba(23, 36, 58, 0.3);
-  padding: 1rem 2rem;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 2px;
-  text-decoration: none;
-  border-radius: 2px;
-  transition: border-color 0.2s ease;
-}
+.btn-outline { background: transparent; color: #17243a; border: 1px solid rgba(23, 36, 58, 0.3); padding: 1rem 2rem; }
 .btn-outline:hover { border-color: #17243a; }
 
-/* ================= SECTION COMMON ================= */
-.section-container {
-  max-width: 1440px;
-  margin: 0 auto;
-  padding: 5rem 3rem;
-}
-
-.section-header {
-  margin-bottom: 3rem;
-}
+/* SECTIONS & GRIDS */
+.section-container { max-width: 1440px; margin: 0 auto; padding: 5rem 3rem; }
 
 .sub-heading {
   font-size: 0.65rem;
@@ -478,7 +582,6 @@ onMounted(() => {
   font-family: 'Syne', sans-serif;
   font-size: 2.2rem;
   font-weight: 700;
-  color: #17243a;
   margin: 0;
 }
 
@@ -497,289 +600,171 @@ onMounted(() => {
   letter-spacing: 2px;
   color: #17243a;
   text-decoration: none;
-  transition: opacity 0.2s ease;
-}
-.view-all-link:hover { opacity: 0.6; }
-
-/* ================= CATEGORY GRID ================= */
-.category-section {
-  background: #f8f6f2;
 }
 
-.category-grid {
+.category-grid, .product-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 1.5rem;
 }
 
-.category-card {
-  text-decoration: none;
-  color: #17243a;
-  background: #ffffff;
+.category-card, .product-card {
+  background: #fff;
   border: 1px solid #eae3dc;
   border-radius: 4px;
   overflow: hidden;
+  text-decoration: none;
+  color: #17243a;
   transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
-.category-card:hover {
+.category-card:hover, .product-card:hover {
   transform: translateY(-4px);
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
 }
 
-.category-img-wrap {
+.category-img-wrap, .product-img-wrap {
   position: relative;
-  aspect-ratio: 4 / 5;
   overflow: hidden;
-  background: #e8e3dc;
+  background: #f1ede6;
 }
+.category-img-wrap { aspect-ratio: 4/5; }
+.product-img-wrap { aspect-ratio: 1/1; }
 
-.category-img-wrap img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
+.category-img-wrap img, .product-img-wrap img {
+  width: 100%; height: 100%; object-fit: cover;
   transition: transform 0.5s ease;
 }
-.category-card:hover .category-img-wrap img {
-  transform: scale(1.05);
-}
+.category-card:hover img, .product-card:hover img { transform: scale(1.05); }
 
 .category-overlay-box {
-  position: absolute;
-  inset: 0;
+  position: absolute; inset: 0;
   background: rgba(23, 36, 58, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  opacity: 0;
-  transition: opacity 0.3s ease;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0; transition: opacity 0.3s ease;
 }
 .category-card:hover .category-overlay-box { opacity: 1; }
-.category-overlay-box span {
-  background: #ffffff;
-  color: #17243a;
-  padding: 0.6rem 1.2rem;
-  font-size: 0.65rem;
-  font-weight: 800;
-  letter-spacing: 1px;
-}
+.category-overlay-box span { background: #fff; color: #17243a; padding: 0.6rem 1.2rem; font-size: 0.65rem; font-weight: 800; }
 
-.category-details {
-  padding: 1.2rem;
-}
-.category-details h3 {
-  font-family: 'Syne', sans-serif;
-  font-size: 1rem;
-  font-weight: 700;
-  margin: 0 0 0.3rem 0;
-}
-.category-details p {
-  font-size: 0.8rem;
-  color: #7b8190;
-  margin: 0;
-}
-
-/* ================= PRODUCT GRID ================= */
-.product-grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 1.5rem;
-}
-
-.product-card {
-  background: #ffffff;
-  border: 1px solid #eae3dc;
-  border-radius: 4px;
-  overflow: hidden;
-  transition: transform 0.3s ease, box-shadow 0.3s ease;
-}
-.product-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.05);
-}
-
-.product-img-wrap {
-  position: relative;
-  aspect-ratio: 1 / 1;
-  background: #f1ede6;
-  overflow: hidden;
-}
-
-.product-img-wrap img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  transition: transform 0.5s ease;
-}
-.product-card:hover .product-img-wrap img {
-  transform: scale(1.05);
-}
+.category-details, .product-info { padding: 1.2rem; }
+.category-details h3, .product-info h4 { font-family: 'Syne', sans-serif; font-size: 0.95rem; margin: 0 0 0.3rem; }
+.category-details p { font-size: 0.8rem; color: #7b8190; margin: 0; }
+.product-price { font-size: 0.85rem; font-weight: 700; color: #5c677d; }
 
 .product-badge-tag {
-  position: absolute;
-  top: 10px;
-  left: 10px;
-  background: #dc3545;
-  color: #ffffff;
-  font-size: 9px;
-  font-weight: 800;
-  padding: 3px 8px;
-  letter-spacing: 1px;
+  position: absolute; top: 10px; left: 10px;
+  background: #dc3545; color: #fff; font-size: 9px; font-weight: 800; padding: 3px 8px;
 }
 
-.product-info {
-  padding: 1.2rem;
-}
+/* PROMO BANNER */
+.promo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2rem; }
+.promo-card { padding: 3rem; border-radius: 12px; display: flex; flex-direction: column; justify-content: center; }
+.dark-card { background: linear-gradient(135deg, #17243a, #27364e); color: #fff; }
+.grey-card { background: linear-gradient(135deg, #22314a, #111a28); color: #fff; }
 
-.product-info h4 {
-  font-family: 'Syne', sans-serif;
-  font-size: 0.95rem;
-  font-weight: 600;
-  color: #17243a;
-  margin: 0 0 0.5rem 0;
-}
+.badge-pill { font-size: 9px; font-weight: 800; padding: 4px 10px; letter-spacing: 2px; margin-bottom: 1rem; border-radius: 2px; display: inline-block; }
+.bg-neon { background: #fff; color: #17243a; }
+.bg-dark { background: rgba(255, 255, 255, 0.2); color: #fff; }
 
-.product-price {
-  font-size: 0.85rem;
-  font-weight: 700;
-  color: #5c677d;
-}
-
-/* ================= PROMO SECTION ================= */
-.promo-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 2rem;
-}
-
-.promo-card {
-  padding: 3rem;
-  border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: flex-start;
-  box-shadow: 0 15px 35px rgba(23, 36, 58, 0.1);
-}
-
-.dark-card {
-  background: linear-gradient(135deg, #17243a 0%, #27364e 100%);
-  color: #ffffff;
-}
-
-.grey-card {
-  background: linear-gradient(135deg, #22314a 0%, #111a28 100%);
-  color: #ffffff;
-}
-
-.badge-pill {
-  font-size: 9px;
-  font-weight: 800;
-  padding: 4px 10px;
-  letter-spacing: 2px;
-  margin-bottom: 1rem;
-  border-radius: 2px;
-}
-.bg-neon { background: #ffffff; color: #17243a; }
-.bg-dark { background: rgba(255, 255, 255, 0.2); color: #ffffff; }
-
-.promo-card h3 {
-  font-family: 'Syne', sans-serif;
-  font-size: 1.8rem;
-  font-weight: 700;
-  margin: 0 0 0.8rem 0;
-  color: #ffffff;
-}
-
+.promo-card h3 { font-family: 'Syne', sans-serif; font-size: 1.8rem; margin: 0 0 0.8rem; }
 .highlight { color: #e2c182; }
+.promo-card p { color: rgba(255, 255, 255, 0.85); font-size: 0.9rem; line-height: 1.6; margin-bottom: 2rem; }
+.btn-white, .btn-dark { background: #fff; color: #17243a; padding: 0.8rem 1.8rem; text-align: center; }
 
-.promo-card p {
-  color: rgba(255, 255, 255, 0.85);
-  font-size: 0.9rem;
-  line-height: 1.6;
-  margin-bottom: 2rem;
-}
-
-.btn-white {
-  background: #ffffff;
-  color: #17243a;
-  padding: 0.8rem 1.8rem;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-decoration: none;
-  border-radius: 4px;
-}
-
-.btn-dark {
-  background: #ffffff;
-  color: #17243a;
-  padding: 0.8rem 1.8rem;
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 1px;
-  text-decoration: none;
-  border-radius: 4px;
-}
-
-/* ================= SUPPORT BUTTON ================= */
+/* SUPPORT BUTTON */
 .support-float-btn {
-  position: fixed;
-  bottom: 30px;
-  right: 30px;
-  z-index: 1000;
-  background: #17243a;
-  color: #ffffff;
-  border: none;
-  padding: 0.8rem 1.4rem;
-  font-family: 'Space Grotesk', sans-serif;
-  font-size: 0.75rem;
-  font-weight: 800;
-  letter-spacing: 1px;
-  border-radius: 30px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
+  position: fixed; bottom: 30px; right: 30px; z-index: 1000;
+  background: #17243a; color: #fff; border: none;
+  padding: 0.8rem 1.4rem; font-size: 0.75rem; font-weight: 800;
+  border-radius: 30px; display: flex; align-items: center; gap: 8px; cursor: pointer;
   box-shadow: 0 10px 30px rgba(23, 36, 58, 0.25);
-  transition: transform 0.2s ease;
-}
-.support-float-btn:hover {
-  transform: scale(1.05);
 }
 
-/* ================= RESPONSIVE QUERY ================= */
+/* =========================================
+   SEARCH OVERLAY MODAL STYLING
+   ========================================= */
+.search-overlay-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  z-index: 9999;
+  display: flex; justify-content: center; align-items: center;
+}
+
+.search-split-container {
+  width: 90vw; max-width: 1200px; height: 80vh;
+  background: #fff; border-radius: 8px;
+  display: grid; grid-template-columns: 380px 1fr;
+  overflow: hidden;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.25);
+}
+
+.search-sidebar-pane {
+  background: #f8f6f2; padding: 3rem 2.5rem;
+  display: flex; flex-direction: column; border-right: 1px solid #eae3dc;
+}
+
+.close-modal-btn {
+  align-self: flex-start; background: #17243a; color: #fff;
+  border: none; padding: 6px 12px; font-size: 10px; font-weight: 700;
+  cursor: pointer; margin-bottom: 2rem;
+}
+
+.search-sidebar-pane h2 { font-family: 'Syne', sans-serif; font-size: 1.8rem; margin: 0 0 0.5rem; }
+.search-sidebar-pane .desc, .search-stats, .results-keyword, .no-results { font-size: 0.85rem; color: #7b8190; }
+
+.search-input-box, .category-select {
+  display: flex; align-items: center;
+  background: #fff; border: 1px solid #eae3dc;
+  height: 44px; padding: 0 1rem; margin-bottom: 1.2rem;
+}
+.search-input-box input { width: 100%; border: none; outline: none; font: inherit; font-size: 0.9rem; }
+.clear-input { background: none; border: none; font-size: 1.2rem; cursor: pointer; color: #7b8190; }
+
+.filter-group { display: flex; flex-direction: column; gap: 6px; font-size: 0.8rem; font-weight: 700; color: #5c677d; margin-bottom: 1.2rem; }
+.category-select { width: 100%; outline: none; font: inherit; }
+
+.search-results-pane { padding: 3rem; overflow-y: auto; }
+
+.results-header {
+  display: flex; justify-content: space-between; align-items: center;
+  border-bottom: 1px solid #eae3dc; padding-bottom: 1rem; margin-bottom: 1.5rem;
+}
+.results-header h3 { font-family: 'Syne', sans-serif; font-size: 1.2rem; margin: 0; }
+
+.results-list { display: flex; flex-direction: column; gap: 1rem; }
+
+.result-product-card {
+  display: flex; align-items: center; gap: 1.5rem;
+  padding: 1rem; border: 1px solid #eae3dc; border-radius: 4px;
+}
+.result-product-card:hover { background: #fcfbfa; }
+.result-product-card img { width: 60px; height: 60px; object-fit: cover; border-radius: 4px; }
+
+.result-info { flex: 1; }
+.result-info h4 { font-size: 0.95rem; margin: 0 0 4px; font-weight: 600; }
+.result-info .price { font-size: 0.85rem; color: #5c677d; font-weight: 700; }
+
+.btn-add-cart {
+  background: #17243a; color: #fff; border: none;
+  padding: 8px 14px; font-size: 0.7rem; font-weight: 700; cursor: pointer;
+}
+.btn-add-cart:hover { background: #27364e; }
+.no-results { text-align: center; padding: 4rem 0; }
+
+/* RESPONSIVE QUERIES */
 @media (max-width: 1200px) {
-  .category-grid, .product-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
+  .category-grid, .product-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .search-split-container { grid-template-columns: 1fr; height: 90vh; width: 95vw; }
 }
 
 @media (max-width: 768px) {
   .street-navbar { padding: 1.2rem 1.5rem; }
   .nav-left { display: none; }
   .hero-title { font-size: 2.8rem; }
-  .category-grid, .product-grid, .promo-grid {
-    grid-template-columns: 1fr;
-  }
+  .category-grid, .product-grid, .promo-grid { grid-template-columns: 1fr; }
   .section-container { padding: 3rem 1.5rem; }
-}
-.btn-admin-panel {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background-color: #11151c;
-  color: #ffffff;
-  padding: 10px 18px;
-  border-radius: 6px;
-  font-size: 13px;
-  font-weight: 600;
-  text-decoration: none;
-  transition: background-color 0.2s ease, transform 0.1s ease;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.btn-admin-panel:hover {
-  background-color: #2d3748;
-  transform: translateY(-1px);
 }
 </style>
