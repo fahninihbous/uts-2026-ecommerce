@@ -1,12 +1,12 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import axios from 'axios'
 
 // Set baseURL API Laravel
 axios.defaults.baseURL = 'http://127.0.0.1:8000/api'
 
-// State Menu Sidebar Aktif ('categories' atau 'products')
-const activeMenu = ref('categories')
+// State Menu Sidebar Aktif ('dashboard', 'categories', 'products', 'orders')
+const activeMenu = ref('dashboard')
 
 // State untuk Sidebar Buka/Tutup
 const isSidebarOpen = ref(true)
@@ -17,6 +17,7 @@ const toggleSidebar = () => {
 // Data States
 const categories = ref([])
 const products = ref([])
+const orders = ref([])
 const loading = ref(false)
 const errorMessage = ref('')
 const successMessage = ref('')
@@ -24,6 +25,8 @@ const successMessage = ref('')
 // Modal States
 const showCategoryModal = ref(false)
 const showProductModal = ref(false)
+const showOrderDetailModal = ref(false)
+const selectedOrder = ref(null)
 const isEditing = ref(false)
 
 // Form State Kategori
@@ -31,11 +34,11 @@ const categoryForm = ref({
   id: null,
   name: '',
   description: '',
-  image: '',
+  image: null,
   is_active: true
 })
 
-// Form State Produk (Tanpa discount_price dan is_featured)
+// Form State Produk
 const productForm = ref({
   id: null,
   category_id: '',
@@ -44,7 +47,8 @@ const productForm = ref({
   description: '',
   price: 0,
   stock: 0,
-  is_active: true
+  is_active: true,
+  images: []
 })
 
 // Ambil token dan set header authorization
@@ -54,7 +58,7 @@ const getAuthHeaders = () => {
 }
 
 // ==========================================
-// FETCH DATA
+// FETCH DATA (Categories, Products, Orders)
 // ==========================================
 const fetchData = async () => {
   loading.value = true
@@ -65,12 +69,72 @@ const fetchData = async () => {
 
     const prodRes = await axios.get('/produk', getAuthHeaders())
     products.value = Array.isArray(prodRes.data) ? prodRes.data : (prodRes.data.data || [])
+
+    // Ambil data pesanan (pastikan endpoint admin/pesanan atau /pesanan tersedia di backend)
+    const ordRes = await axios.get('/admin/pesanan', getAuthHeaders()).catch(() => axios.get('/pesanan', getAuthHeaders()))
+    orders.value = Array.isArray(ordRes.data) ? ordRes.data : (ordRes.data.data || [])
   } catch (error) {
     errorMessage.value = 'Gagal memuat data dari server. Pastikan Anda login sebagai Admin.'
     console.error(error)
   } finally {
     loading.value = false
   }
+}
+
+// ==========================================
+// STATISTIK DASHBOARD
+// ==========================================
+const stats = computed(() => {
+  let totalRevenue = 0
+  let totalItemsSold = 0
+  let pendingCount = 0
+
+  orders.value.forEach(order => {
+    if (order.status !== 'cancelled' && order.payment_status === 'paid' || order.status === 'completed') {
+      totalRevenue += Number(order.total_amount || 0)
+    }
+    if (order.status === 'pending') {
+      pendingCount++
+    }
+    if (order.items && Array.isArray(order.items)) {
+      order.items.forEach(item => {
+        if (order.status !== 'cancelled') {
+          totalItemsSold += Number(item.quantity || 0)
+        }
+      })
+    }
+  })
+
+  return {
+    revenue: totalRevenue,
+    itemsSold: totalItemsSold,
+    totalProducts: products.value.length,
+    totalCategories: categories.value.length,
+    pendingOrders: pendingCount,
+    totalOrders: orders.value.length
+  }
+})
+
+// ==========================================
+// UPDATE STATUS PESANAN OLEH ADMIN
+// ==========================================
+const updateOrderStatus = async (orderId, newStatus) => {
+  try {
+    const token = localStorage.getItem('token')
+    await axios.put(`/admin/pesanan/${orderId}/status`, { status: newStatus }, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    successMessage.value = `Status pesanan berhasil diubah menjadi ${newStatus}.`
+    fetchData()
+    setTimeout(() => successMessage.value = '', 3000)
+  } catch (error) {
+    alert('Gagal mengubah status pesanan: ' + (error.response?.data?.message || error.message))
+  }
+}
+
+const openOrderDetail = (order) => {
+  selectedOrder.value = order
+  showOrderDetailModal.value = true
 }
 
 // Auto-generate slug sederhana berdasarkan nama produk
@@ -89,23 +153,48 @@ const generateSlug = () => {
 const openCategoryModal = (category = null) => {
   if (category) {
     isEditing.value = true
-    categoryForm.value = { ...category }
+    categoryForm.value = { 
+      id: category.id,
+      name: category.name,
+      description: category.description,
+      image: null,
+      is_active: category.is_active 
+    }
   } else {
     isEditing.value = false
-    categoryForm.value = { id: null, name: '', description: '', image: '', is_active: true }
+    categoryForm.value = { id: null, name: '', description: '', image: null, is_active: true }
   }
   showCategoryModal.value = true
 }
 
 const saveCategory = async () => {
   try {
+    const formData = new FormData()
+    formData.append('name', categoryForm.value.name)
+    formData.append('description', categoryForm.value.description || '')
+    formData.append('is_active', categoryForm.value.is_active ? 1 : 0)
+    
+    if (categoryForm.value.image instanceof File) {
+      formData.append('image', categoryForm.value.image)
+    }
+
+    const token = localStorage.getItem('token')
+    const config = {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'multipart/form-data'
+      }
+    }
+
     if (isEditing.value) {
-      await axios.put(`/kategori/${categoryForm.value.id}`, categoryForm.value, getAuthHeaders())
+      formData.append('_method', 'PUT')
+      await axios.post(`/kategori/${categoryForm.value.id}`, formData, config)
       successMessage.value = 'Kategori berhasil diperbarui.'
     } else {
-      await axios.post('/kategori', categoryForm.value, getAuthHeaders())
+      await axios.post('/kategori', formData, config)
       successMessage.value = 'Kategori berhasil ditambahkan.'
     }
+
     showCategoryModal.value = false
     fetchData()
     setTimeout(() => successMessage.value = '', 3000)
@@ -126,9 +215,17 @@ const deleteCategory = async (id) => {
   }
 }
 
+const handleFileUpload = (event) => {
+  categoryForm.value.image = event.target.files[0]
+}
+
 // ==========================================
 // PRODUK CRUD
 // ==========================================
+const handleProductFiles = (event) => {
+  productForm.value.images = Array.from(event.target.files)
+}
+
 const openProductModal = (product = null) => {
   if (product) {
     isEditing.value = true
@@ -140,7 +237,8 @@ const openProductModal = (product = null) => {
       description: product.description || '',
       price: product.price || 0,
       stock: product.stock || 0,
-      is_active: product.is_active !== undefined ? Boolean(product.is_active) : true
+      is_active: product.is_active !== undefined ? Boolean(product.is_active) : true,
+      images: []
     }
   } else {
     isEditing.value = false
@@ -152,7 +250,8 @@ const openProductModal = (product = null) => {
       description: '',
       price: 0,
       stock: 0,
-      is_active: true
+      is_active: true,
+      images: []
     }
   }
   showProductModal.value = true
@@ -160,13 +259,36 @@ const openProductModal = (product = null) => {
 
 const saveProduct = async () => {
   try {
+    const formData = new FormData()
+    formData.append('category_id', productForm.value.category_id)
+    formData.append('name', productForm.value.name)
+    formData.append('slug', productForm.value.slug)
+    formData.append('description', productForm.value.description || '')
+    formData.append('price', productForm.value.price)
+    formData.append('stock', productForm.value.stock)
+    formData.append('is_active', productForm.value.is_active ? 1 : 0)
+
+    productForm.value.images.forEach((file) => {
+      formData.append('images[]', file)
+    })
+
+    const token = localStorage.getItem('token')
+    const config = {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'multipart/form-data'
+      }
+    }
+
     if (isEditing.value) {
-      await axios.put(`/produk/${productForm.value.id}`, productForm.value, getAuthHeaders())
+      formData.append('_method', 'PUT')
+      await axios.post(`/produk/${productForm.value.id}`, formData, config)
       successMessage.value = 'Produk berhasil diperbarui.'
     } else {
-      await axios.post('/produk', productForm.value, getAuthHeaders())
+      await axios.post('/produk', formData, config)
       successMessage.value = 'Produk berhasil ditambahkan.'
     }
+
     showProductModal.value = false
     fetchData()
     setTimeout(() => successMessage.value = '', 3000)
@@ -204,6 +326,25 @@ onMounted(() => {
 
       <nav class="sidebar-nav">
         <button 
+          :class="['sidebar-link', { active: activeMenu === 'dashboard' }]" 
+          @click="activeMenu = 'dashboard'"
+          title="Dashboard"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+          <span v-if="isSidebarOpen" class="link-label">Dashboard</span>
+        </button>
+
+        <button 
+          :class="['sidebar-link', { active: activeMenu === 'orders' }]" 
+          @click="activeMenu = 'orders'"
+          title="Pesanan"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+          <span v-if="isSidebarOpen" class="link-label">Pesanan Masuk</span>
+          <span v-if="stats.pendingOrders > 0" class="badge-count alert">{{ stats.pendingOrders }}</span>
+        </button>
+
+        <button 
           :class="['sidebar-link', { active: activeMenu === 'categories' }]" 
           @click="activeMenu = 'categories'"
           title="Kategori"
@@ -218,7 +359,7 @@ onMounted(() => {
           @click="activeMenu = 'products'"
           title="Produk"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
           <span v-if="isSidebarOpen" class="link-label">Produk</span>
           <span v-if="products.length > 0" class="badge-count">{{ products.length }}</span>
         </button>
@@ -240,7 +381,7 @@ onMounted(() => {
         <div class="header-title-wrap">
           <span class="sub-brand-tag">ADMINISTRATION PANEL</span>
           <h1>Admin Providential</h1>
-          <p>Kelola data katalog dan inventaris produk toko secara real-time.</p>
+          <p>Kelola data katalog, inventaris, dan pesanan pelanggan toko secara real-time.</p>
         </div>
         <div class="badge-admin">
           <span></span> Super Admin
@@ -251,7 +392,93 @@ onMounted(() => {
       <div v-if="successMessage" class="alert-message success">{{ successMessage }}</div>
       <div v-if="errorMessage" class="alert-message error">{{ errorMessage }}</div>
 
-      <!-- ================= KATEGORI KATALOG TABLE ================= -->
+      <!-- ================= 1. DASHBOARD UTAMA ================= -->
+      <section v-if="activeMenu === 'dashboard'" class="content-table-card">
+        <div class="table-header-row">
+          <h2>Ringkasan Dashboard Toko</h2>
+        </div>
+        
+        <div class="stats-grid">
+          <div class="stat-card">
+            <div class="stat-title">Total Pendapatan</div>
+            <div class="stat-value">Rp {{ Number(stats.revenue).toLocaleString('id-ID') }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Barang Terjual</div>
+            <div class="stat-value">{{ stats.itemsSold }} Pcs</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Jumlah Produk</div>
+            <div class="stat-value">{{ stats.totalProducts }} Item</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Jumlah Kategori</div>
+            <div class="stat-value">{{ stats.totalCategories }} Kategori</div>
+          </div>
+          <div class="stat-card highlight">
+            <div class="stat-title">Pesanan Pending</div>
+            <div class="stat-value">{{ stats.pendingOrders }} Pesanan</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-title">Total Seluruh Pesanan</div>
+            <div class="stat-value">{{ stats.totalOrders }} Pesanan</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= 2. PESANAN MASUK ================= -->
+      <section v-if="activeMenu === 'orders'" class="content-table-card">
+        <div class="table-header-row">
+          <h2>Manajemen Pesanan Pelanggan</h2>
+        </div>
+
+        <div class="table-responsive">
+          <table class="admin-data-table">
+            <thead>
+              <tr>
+                <th>No. Pesanan</th>
+                <th>Pemesan</th>
+                <th>Total Biaya</th>
+                <th>Status Pembayaran</th>
+                <th>Status Pesanan</th>
+                <th style="text-align: center;">Aksi</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-if="orders.length === 0">
+                <td colspan="6" class="empty-row-text">Belum ada pesanan masuk.</td>
+              </tr>
+              <tr v-else v-for="ord in orders" :key="ord.id">
+                <td class="bold-text">{{ ord.order_number }}</td>
+                <td>
+                  <div>{{ ord.shipping_name || ord.user?.name }}</div>
+                  <small style="color: #777;">{{ ord.shipping_phone }}</small>
+                </td>
+                <td>Rp {{ Number(ord.total_amount).toLocaleString('id-ID') }}</td>
+                <td>
+                  <span :class="['status-pill', ord.payment_status === 'paid' ? 'active' : 'inactive']">
+                    {{ ord.payment_status }}
+                  </span>
+                </td>
+                <td>
+                  <select :value="ord.status" @change="updateOrderStatus(ord.id, $event.target.value)" class="status-select">
+                    <option value="pending">Pending</option>
+                    <option value="processing">Processing</option>
+                    <option value="shipped">Shipped</option>
+                    <option value="completed">Completed</option>
+                    <option value="cancelled">Cancelled</option>
+                  </select>
+                </td>
+                <td style="text-align: center;">
+                  <button class="btn-edit" @click="openOrderDetail(ord)">Detail</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ================= 3. KATEGORI KATALOG TABLE ================= -->
       <section v-if="activeMenu === 'categories'" class="content-table-card">
         <div class="table-header-row">
           <h2>Manajemen Kategori Katalog</h2>
@@ -294,7 +521,7 @@ onMounted(() => {
         </div>
       </section>
 
-      <!-- ================= PRODUK TABLE ================= -->
+      <!-- ================= 4. PRODUK TABLE ================= -->
       <section v-if="activeMenu === 'products'" class="content-table-card">
         <div class="table-header-row">
           <h2>Manajemen Koleksi Produk</h2>
@@ -339,6 +566,30 @@ onMounted(() => {
 
     </main>
 
+    <!-- ================= MODAL DETAIL PESANAN ================= -->
+    <div v-if="showOrderDetailModal" class="modal-overlay">
+      <div class="modal-card" style="max-width: 600px;">
+        <h3>Detail Pesanan #{{ selectedOrder?.order_number }}</h3>
+        <div v-if="selectedOrder" class="order-detail-content" style="margin-bottom: 20px;">
+          <p><strong>Nama Penerima:</strong> {{ selectedOrder.shipping_name }}</p>
+          <p><strong>No Telepon:</strong> {{ selectedOrder.shipping_phone }}</p>
+          <p><strong>Alamat Pengiriman:</strong> {{ selectedOrder.shipping_address }}</p>
+          <p><strong>Ongkir:</strong> Rp {{ Number(selectedOrder.shipping_cost || 0).toLocaleString('id-ID') }}</p>
+          <p><strong>Total Keseluruhan:</strong> Rp {{ Number(selectedOrder.total_amount || 0).toLocaleString('id-ID') }}</p>
+          
+          <h4 style="margin-top: 15px; margin-bottom: 8px;">Daftar Barang:</h4>
+          <ul style="padding-left: 20px;">
+            <li v-for="item in selectedOrder.items" :key="item.id">
+              {{ item.product_name }} ({{ item.quantity }}x) - Rp {{ Number(item.subtotal || item.price * item.quantity).toLocaleString('id-ID') }}
+            </li>
+          </ul>
+        </div>
+        <div class="modal-actions">
+          <button type="button" class="btn-primary" @click="showOrderDetailModal = false">Tutup</button>
+        </div>
+      </div>
+    </div>
+
     <!-- ================= MODAL KATEGORI ================= -->
     <div v-if="showCategoryModal" class="modal-overlay">
       <div class="modal-card">
@@ -351,6 +602,10 @@ onMounted(() => {
           <div class="form-group">
             <label>Deskripsi</label>
             <textarea v-model="categoryForm.description" placeholder="Deskripsi kategori..."></textarea>
+          </div>
+          <div class="form-group">
+            <label>Foto Kategori</label>
+            <input type="file" @change="handleFileUpload" accept="image/*" />
           </div>
           <div class="form-group row-checkbox">
             <input v-model="categoryForm.is_active" type="checkbox" id="catActive" />
@@ -399,6 +654,11 @@ onMounted(() => {
           </div>
 
           <div class="form-group">
+            <label>Foto Produk (Bisa pilih lebih dari satu)</label>
+            <input type="file" @change="handleProductFiles" multiple accept="image/*" />
+          </div>
+
+          <div class="form-group">
             <label>Deskripsi Produk</label>
             <textarea v-model="productForm.description" rows="3" placeholder="Penjelasan detail produk..."></textarea>
           </div>
@@ -418,6 +678,7 @@ onMounted(() => {
 
   </div>
 </template>
+
 
 <style scoped>
 /* =====================================================
@@ -718,5 +979,43 @@ MODAL WINDOW DIALOGS
   .admin-sidebar { width: 70px; }
   .sidebar-brand-title, .link-label, .badge-count, .sidebar-footer span { display: none; }
   .form-grid-2 { grid-template-columns: 1fr; gap: 20px; }
+}
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 20px;
+  margin-top: 15px;
+}
+.stat-card {
+  background: #f9f9f9;
+  border: 1px solid #eee;
+  padding: 20px;
+  border-radius: 8px;
+}
+.stat-card.highlight {
+  background: #fff8e6;
+  border-color: #ffeeba;
+}
+.stat-title {
+  font-size: 13px;
+  color: #666;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+.stat-value {
+  font-size: 22px;
+  font-weight: bold;
+  color: #222;
+}
+.status-select {
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+  background: #fff;
+}
+.badge-count.alert {
+  background: #e74c3c;
+  color: #fff;
 }
 </style>
